@@ -33,7 +33,7 @@ export class IntegrationEntity {
   @Column()
   identity: string;
 
-  @Column({ type: 'json', nullable: true })
+  // @Column({ type: 'json', nullable: true })
   configs: {
     logo_url?: string;
     channel_config?: Record<string, any>;

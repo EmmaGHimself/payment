@@ -68,7 +68,7 @@ export class PaymentsService {
       pin: dto.pin,
     });
 
-    return res.status(200).json(result);
+    res.status(200).json({ status: 'success', data: result });
   }
 
   async processTransferPayment(dto: TransferPaymentDto, res: Response) {
