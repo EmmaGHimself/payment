@@ -77,7 +77,7 @@ export class ChargeEntity {
   @Column({ nullable: true })
   service: string;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, name: 'channel_id' })
   channelId: number;
 
   @Column({ nullable: true, name: 'charge_info_id' })

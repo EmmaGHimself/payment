@@ -98,7 +98,7 @@ export class ChargesService {
       // If view mode requested, return view URL
       if (dto.use_view) {
         res.status(200).json({
-          view_url: `${this.configService.get('SDK_BASE_URL')}/${chargeInfo.id}/${chargeInfo.identifier}`,
+          view_url: `${this.configService.get('SDK_BASE_URL')}/${chargeInfo.id}/${HashUtil.generateIdentifier(6)}`,
         });
       }
 
@@ -112,9 +112,9 @@ export class ChargesService {
           merchant_name: merchantInfo.name,
           charge_info_id: chargeInfo.id,
           merchant_logo_url: merchantInfo.logo_url,
-          charge_identifier: chargeInfo.identifier,
+          charge_identifier: HashUtil.generateIdentifier(6),
           channels,
-          view_url: `${this.configService.get('SDK_BASE_URL')}/${chargeInfo.identifier}`,
+          view_url: `${this.configService.get('SDK_BASE_URL')}/${HashUtil.generateIdentifier(6)}`,
           callback: chargeInfo.callback,
           phone: chargeInfo.phone,
           email: chargeInfo.email,
@@ -419,7 +419,7 @@ export class ChargesService {
       merchantName: merchantInfo.name,
       logoUrl: merchantInfo.logo_url,
       status: PAYMENT_REQUEST_STATUS.ENABLED,
-      identifier: HashUtil.generateIdentifier(10),
+      // identifier: HashUtil.generateIdentifier(10),
     });
 
     return this.chargeInfoRepository.save(chargeInfo);

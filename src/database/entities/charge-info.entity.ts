@@ -40,7 +40,7 @@ export class ChargeInfoEntity {
   @Column({ nullable: true })
   callback: string;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, name: 'settlement_account' })
   settlementAccount: string;
 
   @Column({ default: false })
@@ -78,8 +78,8 @@ export class ChargeInfoEntity {
   })
   status: PaymentRequestStatus;
 
-  @Column({ nullable: true })
-  identifier: string;
+  // @Column({ nullable: true })
+  // identifier: string;
 
   @Column('decimal', { precision: 15, scale: 2, nullable: true, name: 'discount_amount' })
   discountAmount: number;
@@ -99,6 +99,6 @@ export class ChargeInfoEntity {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  // @UpdateDateColumn({ name: 'updated_at' })
+  // updatedAt: Date;
 }

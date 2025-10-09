@@ -10,7 +10,7 @@ import {
 import { ChargeEntity } from './charge.entity';
 import { ChargeStatus } from '../../common/constants/status.constants';
 
-@Entity('charge_histories')
+@Entity('charge_history')
 @Index(['chargeId'])
 @Index(['activity'])
 @Index(['createdAt'])
