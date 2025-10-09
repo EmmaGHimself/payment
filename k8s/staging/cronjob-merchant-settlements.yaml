@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: payment-service-merchant-settlements-cronjob
+spec:
+  suspend: true
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          volumes:
+          - name: kongapay-config
+            configMap:
+              name: kongapay-config
+          containers:
+          - name: payments-service
+            image: kongapay-registry.igbimo.com/kongapay-stage/payments-service-staging:latest
+            args:
+            - /usr/local/bin/node
+            - /usr/src/app/cron/merchant_settlements.js
+            volumeMounts:
+            - name: kongapay-config
+              mountPath: /creds/kongapay-config.json
+              subPath: kongapay-config.json
+            env:
+            - name: APPLICATION_ENV
+              value: staging
+            - name: NODE_ENV
+              value: staging
+            - name: PORT
+              value: "80"
+            - name: NODE_PATH
+              value: .
+
+            #DB
+            - name: DATABASE_HOST
+              value: "vm-konga-pay-shared-mysql-01.konga-pay.internal"
+            - name: DATABASE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: staging-payservice-db-password
+            - name: DATABASE_PORT
+              value: "3306"
+            - name: DATABASE_NAME
+              value: staging_payment_service
+            - name: DATABASE_USER
+              value: kppayservice
+            - name: DATABASE_POOL_MIN
+              value: "1"
+            - name: DATABASE_POOL_MAX
+              value: "4"
+
+            #REDIS
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_HOST
+              value: "kredis-svc.default.svc.cluster.local."
+            - name: REDIS_DATABASE
+              value: "3"
+
+            #Others
+            - name: TERMINATING_ERROR_CODES
+              value: "122,102,103,104,129,130,E0114,E0021,E0140,E0281,E0282,121,E008,E007,E009,E010,E004,E002,E001,E0036,TE103,TE008"
+
+            #Eagle Encryption
+            - name: EAGLE_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: eagle-encryption-key
+                  optional: true
+            - name: EAGLE_ENCRYPTION_IV
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: eagle-encryption-iv
+                  optional: true
+            - name: EAGLE_ENCRYPTION_METHOD
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: eagle-encryption-method
+                  optional: true
+
+            # Skaleet Service Domain API
+            - name: SKALEET_SDOM_BASE_URL
+              value: https://staging-eagle.kongapay.com/request/sdom
+            - name: SKALEET_SDOM_CLIENT_ID
+              value: d3febce68623ef75b57ec6e6700ebd48
+            - name: SKALEET_SDOM_CLIENT_SECRET
+              value: 91f7d825d9e4afb368974e4f629bc5eb5920286eb4863f4daf3ca09478ecc9f9
+            - name: SKALEET_SDOM_CLIENT_SCOPES
+              value: "posting sda_accounts_view identity_view"
+
+            # Skaleet Company API
+            - name: SKALEET_COMPANY_BASE_URL
+              value: https://staging-eagle.kongapay.com/request/company
+            - name: SKALEET_COMPANY_CLIENT_ID
+              value: bbcafebba4ccf16d60eec3fbf5392e36
+            - name: SKALEET_COMPANY_CLIENT_SECRET
+              value: 9e64685aa6a095748a245702b31924a75a0ed78859e269263185a40ae1bd6262
+            - name: SKALEET_COMPANY_CLIENT_SCOPES
+              value: "sda_accounts_view identity_view"
+
+            # Sphinx API
+            - name: SPHINX_BASE_URL
+              value: https://staging-eagle.kongapay.com/request/sphinx

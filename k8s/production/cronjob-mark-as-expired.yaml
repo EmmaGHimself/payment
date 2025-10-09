@@ -1,0 +1,193 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: payment-service-mark-txn-as-expired-cronjob
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          volumes:
+          - name: kongapay-config
+            configMap:
+              name: kongapay-config
+          containers:
+          - name: payments-service
+            image: swr.af-south-1.myhuaweicloud.com/kongapay/payments-service:latest
+            args:
+            - /usr/local/bin/node
+            - /usr/src/app/cron/updated_pending_transaction.js
+            volumeMounts:
+            - name: kongapay-config
+              mountPath: /creds/kongapay-config.json
+              subPath: kongapay-config.json
+            env:
+            - name: APPLICATION_ENV
+              value: production
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "80"
+            - name: NODE_PATH
+              value: .
+
+            #DB
+            - name: DATABASE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: db-host
+            - name: DATABASE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: payservice-db-password
+            - name: DATABASE_PORT
+              value: "3306"
+            - name: DATABASE_NAME
+              value: prod_payment_service
+            - name: DATABASE_USER
+              value: prod_payservice
+            - name: OLD_DATABASE_HOST
+              value: "azure-mysql.mysql.svc.cluster.local"
+            - name: OLD_DATABASE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: pgtx-db-password
+            - name: OLD_DATABASE_PORT
+              value: "3306"
+            - name: OLD_DATABASE_NAME
+              value: prod_db_pg_tx
+            - name: OLD_DATABASE_USER
+              value: prod_pg_tx
+            - name: DATABASE_POOL_MIN
+              value: "1"
+            - name: DATABASE_POOL_MAX
+              value: "4"
+
+            #JWT
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: kpay-jwt-secret
+
+            #API
+            - name: KPAYAPI_URL
+              value: http://kpayapi
+            - name: CARD_SERVICE_BASE_URL
+              value: http://paymentgatewaytx
+            - name: CARD_SERVICE_OTP_PATH
+              value: /v1/cards/validate
+            - name: CARD_SERVICE_PAY_PATH
+              value: /v1/cards/pay
+            - name: CARD_SERVICE_REFUND_PATH
+              value: /v1/cards/refund
+            - name: KONGAPAY_PAY_PATH
+              value: /v5/web/payment
+            - name: KONGAPAY_MERCHANT_KEY
+              value: live_pr_d0dfb0726fc98b35476380ec5c2cccca
+            - name: KONGAPAY_TEST_MERCHANT_KEY
+              value: test_pr_7d2853adde3539729d6c5c18d6b34d0f
+            - name: KONGAPAY_OTP_PATH
+              value: /v5/web/request/token
+            - name: KONGAPAY_REQUERY_PATH
+              value: /v5/payment
+            - name: CARD_REQUERY_PATH
+              value: /v1/cards/requery
+            - name: CARD_CARDINAL_PATH
+              value: /v1/cards/cardinal
+            - name: USERS_CARD_PATH
+              value: /v1/cards/user/cards
+
+            - name: MMO_SERVICE_BASE_URL
+              value: http://mmo-service
+            - name: PAY_ATTITUDE_PAY_WITH_PHONE_PATH
+              value: /v1/pay/payattitude/phone
+            - name: SDK_BASE_URL
+              value: https://kongapay-pg.kongapay.com/v2/initiatePage
+            - name: PUSH_SERVICE_BASE_URL
+              value: http://ussd-service
+            - name: USSD_INITIATE_PATH
+              value: /v1/ussd/initiate
+            - name: MANDATE_SERVICE_BASE_URL
+              value: http://mandate-service
+            - name: CHARGE_ACCOUNT_PATH
+              value: /payments/accounts
+            - name: RAVE_BANKS
+              value: /banks
+            - name: CARD_ENROL_PATH
+              value: /v1/cards/enrol
+            - name: PUSH_BANKS_PATH
+              value: /v1/banks
+            - name: PUSH_REQUERY_PATH
+              value: /v1/requery/merchant
+            - name: MANDATE_REQUERY_CHARGE_PATH
+              value: /transactions/requery
+            - name: CARD_SERVICE_PAY_VIA_TOKEN_PATH
+              value: /v1/cards/pay/token
+            - name: CARD_SERVICE_PROCESS_3D_SECURE
+              value: /v1/cards/process/acs
+
+            #AUTH
+            - name: KONGAPAY_AUTH_URL
+              value: http://kpayoauth/
+            - name: OAUTH_REQUEST_TIMEOUT
+              value: "150000"
+            - name: OAUTH_RETRY_COUNT
+              value: "3"
+            - name: OAUTH_RETRY_DELAY
+              value: "100"
+            - name: KONGAPAY_CLIENT_ID
+              value: kongapay
+            - name: KONGAPAY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: kongapay-client-secret
+            - name: KONGAPAY_REFUND_PATH
+              value: /v5/web/refund
+            - name: VALIDATE_OTP_PATH
+              value: /payments/accounts/validations
+            - name: QR_INITIATE_PATH
+              value: /v1/qr/initiate
+            - name: VERIFY_CHARGE_PATH
+              value: /transactions/verifications
+
+            #REDIS
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_HOST
+              value: "kredis-svc.default.svc.cluster.local."
+            - name: REDIS_DATABASE
+              value: "3"
+
+            #Others
+            - name: TERMINATING_ERROR_CODES
+              value: "122,102,103,104,129,130,E0114,E0021,E0140,E0281,E0282,121,E008,E007,E009,E010,E004,E002,E001,E0036,TE103,TE008"
+            - name: MANDATE_HOOK
+              value: /payment/notification
+
+            # Hermes
+            - name: HERMES_BASE_URL
+              value: http://hermes.igbimo.com/v2/notifications
+
+            - name: KONGA_AUTH_URL
+              value: https://auth.igbimo.com/v2
+            - name: KONGA_AUTH_AUTHORIZE_PATH
+              value: /authorize
+            - name: KONGA_AUTH_TOKEN_PATH
+              value: /token
+            - name: KONGA_CLIENT_ID
+              value: kpay_web
+            - name: KONGA_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kongapay-secret
+                  key: konga-client-secret
