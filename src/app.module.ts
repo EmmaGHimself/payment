@@ -25,52 +25,57 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
 
 @Module({
   imports: [
-    ConfigModule,
+    ConfigModule, // must come first so ConfigService is available everywhere
 
-    // 🔹 Redis Client (ioredis)
+    // 🔹 Redis Client (for direct Redis operations)
     RedisModule.forRootAsync({
-      useFactory: (config: ConfigService) => ({
-        type: 'single',
-        options: {
-          host: config.get('redis.host'),
-          port: config.get<number>('redis.port'),
-          username: config.get('redis.username'),
-          password: config.get('redis.password'),
-          db: config.get<number>('redis.db'),
-          tls: config.get<boolean>('redis.tls') ? {} : undefined, // 👈 TLS for Redis Cloud
-        },
-      }),
-      inject: [ConfigService],
-    }),
+  useFactory: (config: ConfigService) => ({
+    type: 'single',
+    options: {
+      host: config.get<string>('redis.host'),
+      port: config.get<number>('redis.port'),
+      username: config.get<string>('redis.username'),
+      password: config.get<string>('redis.password'),
+      db: config.get<number>('redis.db'),
+      tls: config.get('redis.tls'), // 👈 now includes servername
+    },
+  }),
+  inject: [ConfigService],
+}),
+
 
     // 🔹 Cache Manager (uses Redis)
     CacheModule.registerAsync({
       isGlobal: true,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
+      useFactory: async (config: ConfigService) => ({
         store: redisStore as any,
-        host: config.get('redis.host'),
-        port: config.get<number>('redis.port'),
-        password: config.get('redis.password'),
+        socket: {
+          host: config.get<string>('redis.host'),
+          port: config.get<number>('redis.port'),
+          tls: config.get('redis.tls') || undefined,
+        },
+        username: config.get<string>('redis.username'),
+        password: config.get<string>('redis.password'),
         ttl: config.get<number>('redis.ttl'),
-        tls: config.get<boolean>('redis.tls') ? {} : undefined,
       }),
     }),
 
-    // 🔹 BullMQ (queues)
+    // 🔹 BullMQ (queues / background jobs)
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
+      useFactory: async (config: ConfigService) => ({
         redis: {
-          host: config.get('redis.host'),
+          host: config.get<string>('redis.host'),
           port: config.get<number>('redis.port'),
-          username: config.get('redis.username'),
-          password: config.get('redis.password'),
-          tls: config.get<boolean>('redis.tls') ? {} : undefined,
+          username: config.get<string>('redis.username'),
+          password: config.get<string>('redis.password'),
+          tls: config.get('redis.tls') || undefined,
         },
       }),
     }),
 
+    // 🔹 Business Modules
     DatabaseModule,
     AuthModule,
     ChargesModule,
