@@ -31,7 +31,7 @@ export class HooksController {
     @Body() payload: PaystackWebhookDto,
     @Headers('x-paystack-signature') signature: string,
     @Req() req: RawBodyRequest<Request>,
-  ) {
+  ): Promise<any> {
     this.logger.log(`Received Paystack webhook: ${payload.event}`);
 
     try {
@@ -48,7 +48,7 @@ export class HooksController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Handle Knip webhook' })
   @ApiResponse({ status: 200, description: 'Webhook processed successfully' })
-  async handleKnipWebhook(@Body() payload: any, @Req() req: RawBodyRequest<Request>) {
+  async handleKnipWebhook(@Body() payload: any, @Req() req: RawBodyRequest<Request>): Promise<any> {
     this.logger.log(`Received Knip webhook: ${payload.event}`);
 
     try {
@@ -66,7 +66,7 @@ export class HooksController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Handle transfer webhook' })
   @ApiResponse({ status: 200, description: 'Transfer webhook processed' })
-  async handleTransferWebhook(@Body() payload: TransferWebhookDto) {
+  async handleTransferWebhook(@Body() payload: TransferWebhookDto): Promise<any> {
     this.logger.log(`Received transfer webhook for: ${payload.identifier}`);
 
     try {

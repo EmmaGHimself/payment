@@ -21,19 +21,14 @@ import { BullModule } from '@nestjs/bull';
       ChargeHistoryEntity,
       ChargeMetadataEntity,
       RequestLogEntity,
-      ChargeInfoEntity
+      ChargeInfoEntity,
     ]),
-    // BullModule.registerQueue(),
+    BullModule.registerQueue({ name: 'settle-charge' }),
     HttpModule,
     ProvidersModule,
   ],
   controllers: [HooksController],
-  providers: [
-    HooksService,
-    PaystackWebhookHandler,
-    TransferWebhookHandler,
-    KnipWebhookHandler
-  ],
+  providers: [HooksService, PaystackWebhookHandler, TransferWebhookHandler, KnipWebhookHandler],
   exports: [HooksService],
 })
 export class HooksModule {}

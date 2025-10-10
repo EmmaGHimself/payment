@@ -4,9 +4,18 @@ import { IPaymentStrategy, PaymentRequest, PaymentResponse } from './payment-str
 import { PAYMENT_METHODS, PAYMENT_PROVIDERS } from '../../common/constants/payment.constants';
 import { MaskUtil } from '../../common/utils/mask.util';
 
+interface CardPaymentRequest extends PaymentRequest {
+  pan: string;
+  cvv: string;
+  expiry: string;
+  pin?: string;
+  provider?: string;
+}
+
 @Injectable()
 export class CardPaymentStrategy implements IPaymentStrategy {
   private readonly logger = new Logger(CardPaymentStrategy.name);
+  private readonly providerName = PAYMENT_PROVIDERS.PAYSTACK;
 
   constructor(private readonly paymentProviderFactory: PaymentProviderFactory) {}
 
@@ -14,21 +23,10 @@ export class CardPaymentStrategy implements IPaymentStrategy {
     return PAYMENT_METHODS.CARD;
   }
 
-  async processPayment(
-    request: PaymentRequest & {
-      pan: string;
-      cvv: string;
-      expiry: string;
-      pin?: string;
-      provider?: string;
-    },
-  ): Promise<PaymentResponse> {
+  async processPayment(request: CardPaymentRequest): Promise<PaymentResponse> {
     try {
-      // Get payment provider (default to Paystack)
-      const providerName = PAYMENT_PROVIDERS.PAYSTACK;
-      const provider = this.paymentProviderFactory.getProvider(providerName);
+      const provider = this.paymentProviderFactory.getProvider(this.providerName);
 
-      // Create charge with provider
       const result = await provider.createCharge({
         amount: request.amount,
         currency: request.currency,
@@ -42,17 +40,16 @@ export class CardPaymentStrategy implements IPaymentStrategy {
         },
         metadata: {
           ...request.metadata,
-          payment_method: 'card',
+          payment_method: PAYMENT_METHODS.CARD,
           card_last_four: request.pan.slice(-4),
           card_scheme: MaskUtil.getCardScheme(request.pan),
         },
       });
 
       this.logger.log(`Card payment initiated: ${request.reference}`);
-
       return result;
     } catch (error) {
-      this.logger.error(`Card payment failed: ${request.reference}`, error);
+      this.logger.error(`Card payment failed: ${request.reference}`, error.stack);
       return {
         success: false,
         reference: request.reference,
@@ -63,7 +60,7 @@ export class CardPaymentStrategy implements IPaymentStrategy {
 
   async verifyPayment(reference: string): Promise<PaymentResponse> {
     try {
-      const provider = this.paymentProviderFactory.getProvider(PAYMENT_PROVIDERS.PAYSTACK);
+      const provider = this.paymentProviderFactory.getProvider(this.providerName);
       const result = await provider.verifyTransaction(reference);
 
       return {
@@ -73,7 +70,7 @@ export class CardPaymentStrategy implements IPaymentStrategy {
         data: result.data,
       };
     } catch (error) {
-      this.logger.error(`Card payment verification failed: ${reference}`, error);
+      this.logger.error(`Card payment verification failed: ${reference}`, error.stack);
       return {
         success: false,
         reference,

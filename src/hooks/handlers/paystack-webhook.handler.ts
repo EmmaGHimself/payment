@@ -11,6 +11,20 @@ import { CHARGE_STATUS } from '../../common/constants/status.constants';
 import { PaymentException } from '../../common/exceptions/payment.exception';
 import { ERROR_CODES } from '../../common/constants/error.constants';
 
+interface WebhookResult {
+  event: string;
+  processed: boolean;
+  charge_id: number;
+}
+
+interface ChargeHistoryData {
+  description: string;
+  responseMessage: string;
+  status: string;
+  activity: string;
+  response?: any;
+}
+
 @Injectable()
 export class PaystackWebhookHandler {
   private readonly logger = new Logger(PaystackWebhookHandler.name);
@@ -25,8 +39,11 @@ export class PaystackWebhookHandler {
     private readonly configService: ConfigService,
   ) {}
 
-  async handle(payload: PaystackWebhookDto, signature: string, rawBody: Buffer) {
-    // Verify webhook signature
+  async handle(
+    payload: PaystackWebhookDto,
+    signature: string,
+    rawBody: Buffer,
+  ): Promise<WebhookResult> {
     if (!this.verifySignature(rawBody, signature)) {
       throw new PaymentException(
         'Invalid webhook signature',
@@ -35,16 +52,13 @@ export class PaystackWebhookHandler {
       );
     }
 
-    // Find charge by Paystack reference
     const charge = await this.findChargeByPaystackReference(payload.data.reference);
-
     if (!charge) {
       throw new PaymentException('Charge not found', 404, ERROR_CODES.TRANSACTION_NOT_FOUND);
     }
 
     const isSuccessful = this.isSuccessfulEvent(payload);
 
-    // Log webhook event
     await this.logChargeHistory(charge.id, {
       description: `Paystack webhook: ${payload.event}`,
       responseMessage: payload.data.status,
@@ -53,7 +67,6 @@ export class PaystackWebhookHandler {
       response: payload,
     });
 
-    // Update charge status if successful and not already successful
     if (isSuccessful && !charge.successful) {
       await this.markChargeAsSuccessful(charge);
     }
@@ -67,34 +80,27 @@ export class PaystackWebhookHandler {
 
   private verifySignature(rawBody: Buffer, signature: string): boolean {
     const secretKey = this.configService.get<string>('payment.providers.paystack.webhookSecret');
-
     if (!secretKey) {
       this.logger.warn('Paystack webhook secret not configured');
       return false;
     }
 
     const hash = crypto.createHmac('sha512', secretKey).update(rawBody).digest('hex');
-
     return hash === signature;
   }
 
   private async findChargeByPaystackReference(reference: string): Promise<ChargeEntity | null> {
-    // First try to find by identifier
-    let charge = await this.chargeRepository.findOne({
+    const chargeByIdentifier = await this.chargeRepository.findOne({
       where: { identifier: reference },
     });
+    if (chargeByIdentifier) return chargeByIdentifier;
 
-    if (!charge) {
-      // Try to find by paystack reference in metadata
-      const metadata = await this.chargeMetadataRepository.findOne({
-        where: { name: 'paystack_charge_reference', value: reference },
-        relations: ['charge'],
-      });
+    const metadata = await this.chargeMetadataRepository.findOne({
+      where: { name: 'paystack_charge_reference', value: reference },
+      relations: ['charge'],
+    });
 
-      charge = metadata?.charge;
-    }
-
-    return charge;
+    return metadata?.charge || null;
   }
 
   private isSuccessfulEvent(payload: PaystackWebhookDto): boolean {
@@ -111,25 +117,15 @@ export class PaystackWebhookHandler {
     });
   }
 
-  private async logChargeHistory(
-    chargeId: number,
-    data: {
-      description: string;
-      responseMessage: string;
-      status: string;
-      activity: string;
-      response?: any;
-    },
-  ): Promise<void> {
+  private async logChargeHistory(chargeId: number, data: ChargeHistoryData): Promise<void> {
     const history = this.chargeHistoryRepository.create({
       chargeId,
       description: data.description,
       responseMessage: data.responseMessage,
-      status: data.status as any, // Cast to match entity type
+      status: { name: data.status } as any,
       activity: data.activity,
-      response: data.response ? JSON.stringify(data.response) : null, // Convert to string
+      response: data.response ? JSON.stringify(data.response) : null,
     });
-
     await this.chargeHistoryRepository.save(history);
   }
 }

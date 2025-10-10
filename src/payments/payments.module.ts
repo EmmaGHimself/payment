@@ -11,6 +11,7 @@ import { ProvidersModule } from '../providers/providers.module';
 import { AuthModule } from '../auth/auth.module';
 import { CardPaymentStrategy } from './strategies/card-payment.strategy';
 import { TransferPaymentStrategy } from './strategies/transfer-payment.strategy';
+import { BullModule, BullQueueEvents } from '@nestjs/bull';
 
 @Module({
   imports: [
@@ -20,16 +21,13 @@ import { TransferPaymentStrategy } from './strategies/transfer-payment.strategy'
       ChargeHistoryEntity,
       ChargeMetadataEntity,
     ]),
+    BullModule.registerQueue({ name: 'settle-charge' }),
     HttpModule,
     ProvidersModule,
     AuthModule,
   ],
   controllers: [PaymentsController],
-  providers: [
-    PaymentsService,
-    CardPaymentStrategy,
-    TransferPaymentStrategy,
-  ],
+  providers: [PaymentsService, CardPaymentStrategy, TransferPaymentStrategy],
   exports: [PaymentsService],
 })
 export class PaymentsModule {}
