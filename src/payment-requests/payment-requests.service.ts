@@ -160,7 +160,7 @@ export class PaymentRequestsService {
     return this.formatPaymentRequest(updatedRequest);
   }
 
-  async payFromRequest(identifier: string) {
+  async payFromRequest(identifier: string): Promise<any> {
     // Find payment request
     const paymentRequest = await this.paymentRequestRepository.findOne({
       where: { identifier, status: PAYMENT_REQUEST_STATUS.ENABLED },

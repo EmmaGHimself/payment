@@ -2,6 +2,9 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+import { Response } from 'express';
 import { ChargeEntity } from '../database/entities/charge.entity';
 import { ChargeInfoEntity } from '../database/entities/charge-info.entity';
 import { ChargeHistoryEntity } from '../database/entities/charge-history.entity';
@@ -14,18 +17,58 @@ import { ValidateOtpDto } from './dto/validate-otp.dto';
 import { RefundChargeDto } from './dto/refund-charge.dto';
 import { HashUtil } from '../common/utils/hash.util';
 import { MaskUtil } from '../common/utils/mask.util';
-import { ChargeStatus } from '../common/constants/status.constants';
+import { PaymentException } from '../common/exceptions/payment.exception';
 import { CHARGE_STATUS, PAYMENT_REQUEST_STATUS } from '../common/constants/status.constants';
 import { PAYMENT_PROVIDERS, CURRENCY_CODES } from '../common/constants/payment.constants';
 import { ERROR_CODES, ERROR_MESSAGES } from '../common/constants/error.constants';
-import { PaymentException } from '../common/exceptions/payment.exception';
-import { Response } from 'express';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull'
+
+interface MerchantInfo {
+  id: string;
+  name: string;
+  logo_url: string | null;
+}
+
+interface PaymentChannel {
+  id: number;
+  identifier: string;
+  name: string;
+  logo_url: string;
+  type: string;
+  status: string;
+  description?: string;
+  template_url: string;
+  min_amount: number;
+  max_amount: number;
+}
+
+interface ChargeResponse {
+  status: string;
+  data: {
+    merchant_name: string;
+    charge_info_id: number;
+    merchant_logo_url: string | null;
+    charge_identifier: string;
+    channels: PaymentChannel[];
+    view_url: string;
+    callback: string;
+    phone: string | null;
+    email: string;
+    amount: number;
+    currency: string;
+    reference: string;
+  };
+}
+
+enum ChargeStatus {
+  PENDING = 'pending',
+  SUCCESSFUL = 'successful',
+  FAILED = 'failed',
+}
 
 @Injectable()
 export class ChargesService {
   private readonly logger = new Logger(ChargesService.name);
+  private readonly minAmount = 10;
 
   constructor(
     @InjectRepository(ChargeEntity)
@@ -43,70 +86,23 @@ export class ChargesService {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly paymentProviderFactory: PaymentProviderFactory,
-    @InjectQueue("settle-charge") private readonly queue: Queue
+    @InjectQueue('settle-charge') private readonly queue: Queue,
   ) {}
 
-  async initiateCharge(dto: InitiateChargeDto, res: Response) {
+  async initiateCharge(dto: InitiateChargeDto, res: Response): Promise<ChargeResponse> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // Validate hash
-      const isValidHash = this.validateRequestHash(dto);
-      if (!isValidHash) {
-        throw new PaymentException(ERROR_MESSAGES.INVALID_HASH, 400, ERROR_CODES.INVALID_HASH);
-      }
+      this.validateRequestHash(dto);
+      await this.checkDuplicateTransaction(dto.reference);
 
-      // Check for duplicate transaction
-      const existingCharge = await this.chargeInfoRepository.findOne({
-        where: { merchantReference: dto.reference },
-      });
-
-      if (existingCharge) {
-        throw new PaymentException(
-          'Transaction already initiated',
-          400,
-          ERROR_CODES.TRANSACTION_ALREADY_INITIATED,
-        );
-      }
-
-      // Get merchant or integration details
-      let merchantInfo: any;
-      let integrationInfo: IntegrationEntity;
-
-      if (dto.merchant_id) {
-        merchantInfo = await this.getMerchantDetails(dto.merchant_id);
-      } else if (dto.public_key) {
-        integrationInfo = await this.getIntegrationByPublicKey(dto.public_key);
-        merchantInfo = {
-          id: integrationInfo.id,
-          name: integrationInfo.name,
-          logo_url: integrationInfo.configs?.logo_url,
-        };
-      } else {
-        throw new PaymentException(
-          'Merchant ID or public key is required',
-          400,
-          ERROR_CODES.INVALID_MERCHANT,
-        );
-      }
-
-      // Create charge info
+      const { merchantInfo, integrationInfo } = await this.getMerchantOrIntegration(dto);
       const chargeInfo = await this.createChargeInfo(dto, merchantInfo, integrationInfo);
-
-      // If view mode requested, return view URL
-      if (dto.use_view) {
-        res.status(200).json({
-          view_url: `${this.configService.get('SDK_BASE_URL')}/${chargeInfo.id}/${HashUtil.generateIdentifier(6)}`,
-        });
-      }
-
-      // Get available payment channels
       const channels = await this.getPaymentChannels(chargeInfo.amount);
 
-      // Prepare response
-      const response = {
+      const response: ChargeResponse = {
         status: 'success',
         data: {
           merchant_name: merchantInfo.name,
@@ -114,7 +110,7 @@ export class ChargesService {
           merchant_logo_url: merchantInfo.logo_url,
           charge_identifier: HashUtil.generateIdentifier(6),
           channels,
-          view_url: `${this.configService.get('SDK_BASE_URL')}/${HashUtil.generateIdentifier(6)}`,
+          view_url: `${this.configService.get('SDK_BASE_URL')}/${chargeInfo.id}/${HashUtil.generateIdentifier(6)}`,
           callback: chargeInfo.callback,
           phone: chargeInfo.phone,
           email: chargeInfo.email,
@@ -124,7 +120,11 @@ export class ChargesService {
         },
       };
 
-      res.status(200).json(response);
+      if (dto.use_view) {
+        res.status(200).json({ view_url: response.data.view_url });
+      } else {
+        res.status(200).json(response);
+      }
 
       await queryRunner.commitTransaction();
       return response;
@@ -138,30 +138,15 @@ export class ChargesService {
   }
 
   async validateOtp(dto: ValidateOtpDto) {
-    // Find pending charge
-    const charge = await this.chargeRepository.findOne({
-      where: {
-        identifier: dto.identifier,
-        status: CHARGE_STATUS.PENDING,
-      },
-      relations: ['chargeInfo'],
-    });
-
-    if (!charge) {
-      throw new NotFoundException(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
-    }
+    const charge = await this.findPendingCharge(dto.identifier);
+    const provider = this.paymentProviderFactory.getProvider(PAYMENT_PROVIDERS.PAYSTACK);
 
     try {
-      // Get payment provider
-      const provider = this.paymentProviderFactory.getProvider(PAYMENT_PROVIDERS.PAYSTACK);
-
-      // Submit validation to provider
       const result = await provider.submitValidation(dto.identifier, {
         type: 'otp',
         otp: dto.otp,
       });
 
-      // Log charge history
       await this.logChargeHistory(charge.id, {
         description: 'OTP validation attempted',
         responseMessage: result.message,
@@ -170,7 +155,6 @@ export class ChargesService {
         response: result.data,
       });
 
-      // Update charge status if successful
       if (result.success) {
         await this.markChargeAsSuccessful(charge);
       }
@@ -189,18 +173,8 @@ export class ChargesService {
   }
 
   async cancelCharge(identifier: string) {
-    const charge = await this.chargeRepository.findOne({
-      where: { identifier },
-    });
-
-    if (!charge) {
-      throw new NotFoundException(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
-    }
-
-    // Update charge status
+    const charge = await this.findCharge(identifier);
     await this.chargeRepository.update({ id: charge.id }, { status: CHARGE_STATUS.CANCELLED });
-
-    // Log charge history
     await this.logChargeHistory(charge.id, {
       description: 'Charge cancelled by user',
       responseMessage: 'Cancelled',
@@ -212,12 +186,8 @@ export class ChargesService {
   }
 
   async refundCharge(dto: RefundChargeDto) {
-    // Find completed charge
     const chargeInfo = await this.chargeInfoRepository.findOne({
-      where: {
-        merchantReference: dto.reference,
-        merchantId: dto.merchant_id,
-      },
+      where: { merchantReference: dto.reference, merchantId: dto.merchant_id },
       relations: ['charges'],
     });
 
@@ -226,7 +196,7 @@ export class ChargesService {
     }
 
     const successfulCharge = chargeInfo.charges.find(
-      c => c.status === CHARGE_STATUS.SUCCESSFUL && c.successful,
+      (c) => c.status === CHARGE_STATUS.SUCCESSFUL && c.successful,
     );
 
     if (!successfulCharge) {
@@ -238,13 +208,10 @@ export class ChargesService {
     }
 
     try {
-      // Get payment provider and process refund
       const provider = this.paymentProviderFactory.getProvider(
         (successfulCharge.service as any) || PAYMENT_PROVIDERS.PAYSTACK,
       );
 
-      // Note: Refund implementation depends on provider capabilities
-      // For now, we'll log the refund request
       await this.logChargeHistory(successfulCharge.id, {
         description: 'Refund requested',
         responseMessage: 'Refund processing',
@@ -265,15 +232,7 @@ export class ChargesService {
   }
 
   async getChargeByIdentifier(identifier: string) {
-    const charge = await this.chargeRepository.findOne({
-      where: { identifier },
-      relations: ['chargeInfo', 'history', 'metadata'],
-    });
-
-    if (!charge) {
-      throw new NotFoundException(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
-    }
-
+    const charge = await this.findCharge(identifier, ['chargeInfo', 'history', 'metadata']);
     return {
       id: charge.id,
       identifier: charge.identifier,
@@ -291,23 +250,13 @@ export class ChargesService {
   }
 
   async requeryCharge(identifier: string) {
-    const charge = await this.chargeRepository.findOne({
-      where: { identifier },
-    });
-
-    if (!charge) {
-      throw new NotFoundException(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
-    }
+    const charge = await this.findCharge(identifier);
+    const provider = this.paymentProviderFactory.getProvider(
+      (charge.service as any) || PAYMENT_PROVIDERS.PAYSTACK,
+    );
 
     try {
-      // Query payment provider for current status
-      const provider = this.paymentProviderFactory.getProvider(
-        (charge.service as any) || PAYMENT_PROVIDERS.PAYSTACK,
-      );
-
       const result = await provider.verifyTransaction(identifier);
-
-      // Update charge status if needed
       if (result.success && !charge.successful) {
         await this.markChargeAsSuccessful(charge);
       }
@@ -332,22 +281,12 @@ export class ChargesService {
     chargeId: number,
     settlementData: { reason: string; extra_data?: Record<string, any> },
   ) {
-    const charge = await this.chargeRepository.findOne({
-      where: { id: chargeId },
-    });
-
-    if (!charge) {
-      throw new NotFoundException(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
-    }
-
+    const charge = await this.findChargeById(chargeId);
     if (charge.settled) {
       throw new BadRequestException('Charge already settled');
     }
 
-    // Update charge as settled
     await this.chargeRepository.update({ id: chargeId }, { settled: true });
-
-    // Log settlement
     await this.logChargeHistory(chargeId, {
       description: settlementData.reason,
       responseMessage: 'Manual settlement',
@@ -359,21 +298,60 @@ export class ChargesService {
     return { message: 'Charge settled successfully' };
   }
 
-  private validateRequestHash(dto: InitiateChargeDto): boolean {
-    const publicKey = dto.public_key || 'temp_key'; // In production, get actual key
+  private validateRequestHash(dto: InitiateChargeDto): void {
+    const publicKey = dto.public_key || 'temp_key';
     const discountString = dto.discount ? JSON.stringify(dto.discount) : '';
-
-    return HashUtil.validateHash(
+    const isValid = HashUtil.validateHash(
       parseFloat(dto.amount),
       publicKey,
       dto.reference,
       dto.hash,
       discountString,
     );
+
+    if (!isValid) {
+      throw new PaymentException(ERROR_MESSAGES.INVALID_HASH, 400, ERROR_CODES.INVALID_HASH);
+    }
   }
 
-  private async getMerchantDetails(merchantId: string) {
-    // In production, this would fetch from merchant service
+  private async checkDuplicateTransaction(reference: string): Promise<void> {
+    const existingCharge = await this.chargeInfoRepository.findOne({
+      where: { merchantReference: reference },
+    });
+    if (existingCharge) {
+      throw new PaymentException(
+        'Transaction already initiated',
+        400,
+        ERROR_CODES.TRANSACTION_ALREADY_INITIATED,
+      );
+    }
+  }
+
+  private async getMerchantOrIntegration(dto: InitiateChargeDto): Promise<{
+    merchantInfo: any;
+    integrationInfo?: IntegrationEntity;
+  }> {
+    if (dto.merchant_id) {
+      return { merchantInfo: await this.getMerchantDetails(dto.merchant_id) };
+    } else if (dto.public_key) {
+      const integrationInfo = await this.getIntegrationByPublicKey(dto.public_key);
+      return {
+        merchantInfo: {
+          id: integrationInfo.id,
+          name: integrationInfo.name,
+          logo_url: integrationInfo.configs?.logo_url,
+        },
+        integrationInfo,
+      };
+    }
+    throw new PaymentException(
+      'Merchant ID or public key is required',
+      400,
+      ERROR_CODES.INVALID_MERCHANT,
+    );
+  }
+
+  private async getMerchantDetails(merchantId: string): Promise<MerchantInfo> {
     return {
       id: merchantId,
       name: 'Test Merchant',
@@ -382,10 +360,7 @@ export class ChargesService {
   }
 
   private async getIntegrationByPublicKey(publicKey: string): Promise<IntegrationEntity> {
-    const integration = await this.integrationRepository.findOne({
-      where: { publicKey },
-    });
-
+    const integration = await this.integrationRepository.findOne({ where: { publicKey } });
     if (!integration) {
       throw new PaymentException(
         ERROR_MESSAGES.INVALID_MERCHANT,
@@ -393,17 +368,16 @@ export class ChargesService {
         ERROR_CODES.INVALID_MERCHANT,
       );
     }
-
     return integration;
   }
 
   private async createChargeInfo(
     dto: InitiateChargeDto,
-    merchantInfo: any,
+    merchantInfo: MerchantInfo,
     integrationInfo?: IntegrationEntity,
   ): Promise<ChargeInfoEntity> {
     const chargeInfo = this.chargeInfoRepository.create({
-      amount: parseFloat(dto.amount) / 100, // Convert from kobo to naira
+      amount: parseFloat(dto.amount) / 100,
       merchantReference: dto.reference,
       customerId: dto.customer_id,
       description: dto.description,
@@ -411,7 +385,6 @@ export class ChargesService {
       phone: dto.phone,
       callback: dto.callback,
       settlementAccount: dto.settlement_account,
-      // value is either test or live
       livemode: dto.mode !== 'live',
       currency: dto.currency || CURRENCY_CODES.NGN,
       merchantId: merchantInfo.id,
@@ -419,26 +392,23 @@ export class ChargesService {
       merchantName: merchantInfo.name,
       logoUrl: merchantInfo.logo_url,
       status: PAYMENT_REQUEST_STATUS.ENABLED,
-      // identifier: HashUtil.generateIdentifier(10),
     });
 
     return this.chargeInfoRepository.save(chargeInfo);
   }
 
-  private async getPaymentChannels(amount: number) {
-    const min_amount: number = 10;
-    // Mock implementation - in production, this would fetch from database
+  private async getPaymentChannels(amount: number): Promise<PaymentChannel[]> {
     return [
       {
         id: 1,
         identifier: 'card',
-        name: 'card',
+        name: 'Card',
         logo_url: '/img/credit-card.svg',
         type: 'card',
         status: 'enabled',
         description: 'Make payments with your credit or debit card.',
         template_url: 'card/form',
-        min_amount,
+        min_amount: this.minAmount,
         max_amount: 1000000,
       },
       {
@@ -447,9 +417,9 @@ export class ChargesService {
         name: 'Bank Transfer',
         type: 'transfer',
         status: 'enabled',
-        min_amount,
         template_url: 'transfer/form',
         logo_url: '/img/transfer-icon.svg',
+        min_amount: this.minAmount,
         max_amount: 5000000,
       },
     ];
@@ -464,7 +434,7 @@ export class ChargesService {
       activity: string;
       response?: any;
     },
-  ) {
+  ): Promise<void> {
     const history = this.chargeHistoryRepository.create({
       chargeId,
       description: data.description,
@@ -474,22 +444,37 @@ export class ChargesService {
       response: data.response ? JSON.stringify(data.response) : null,
     });
 
-    return this.chargeHistoryRepository.save(history);
+    await this.chargeHistoryRepository.save(history);
   }
 
-  private async markChargeAsSuccessful(charge: ChargeEntity) {
-    await this.queue.add("settle", { charge_id: charge.id, settle: true }, {})
-    // await this.chargeRepository.update(
-    //   { id: charge.id },
-    //   {
-    //     status: CHARGE_STATUS.SUCCESSFUL,
-    //     successful: true,
-    //   },
-    // );
+  private async findPendingCharge(identifier: string): Promise<ChargeEntity> {
+    const charge = await this.chargeRepository.findOne({
+      where: { identifier, status: CHARGE_STATUS.PENDING },
+      relations: ['chargeInfo'],
+    });
+    if (!charge) {
+      throw new NotFoundException(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
+    }
+    return charge;
+  }
 
-    // await this.chargeInfoRepository.update(
-    //   { id: charge.chargeInfoId },
-    //   { status: PAYMENT_REQUEST_STATUS.ENABLED },
-    // );
+  private async findCharge(identifier: string, relations: string[] = []): Promise<ChargeEntity> {
+    const charge = await this.chargeRepository.findOne({ where: { identifier }, relations });
+    if (!charge) {
+      throw new NotFoundException(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
+    }
+    return charge;
+  }
+
+  private async findChargeById(id: number): Promise<ChargeEntity> {
+    const charge = await this.chargeRepository.findOne({ where: { id } });
+    if (!charge) {
+      throw new NotFoundException(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
+    }
+    return charge;
+  }
+
+  private async markChargeAsSuccessful(charge: ChargeEntity): Promise<void> {
+    await this.queue.add('settle', { charge_id: charge.id, settle: true }, {});
   }
 }

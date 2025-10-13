@@ -7,6 +7,7 @@ export interface PaymentRequest {
   phone?: string;
   reference: string;
   description: string;
+  merchant_reference?: string;
   metadata?: Record<string, any>;
 }
 

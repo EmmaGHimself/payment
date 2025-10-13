@@ -1,12 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsString,
-  IsNumber,
-  IsEmail,
-  IsOptional,
-  Length,
-  Matches,
-} from 'class-validator';
+import { IsString, IsNumber, IsEmail, IsOptional, Length, Matches } from 'class-validator';
 
 export class CardPaymentDto {
   @ApiProperty({ description: 'Payment identifier' })
@@ -55,7 +48,7 @@ export class TransferPaymentDto {
 
   @ApiProperty({ description: 'Charge info ID' })
   @IsNumber()
-  charge_info_id: string;
+  charge_info_id: number;
 
   @ApiProperty({ description: 'Customer name' })
   @IsString()
@@ -69,7 +62,7 @@ export class TransferPaymentDto {
   @ApiProperty()
   @IsOptional()
   metadata?: Array<{ name: string; value: any }>;
-  
+
   @ApiProperty({ description: 'Phone number' })
   @IsString()
   phone: string;
@@ -77,10 +70,10 @@ export class TransferPaymentDto {
   @ApiProperty({ description: 'Email address' })
   @IsString()
   email: string;
- 
-  _csrf?: string
 
-  name?:string
+  _csrf?: string;
+
+  name?: string;
 }
 
 export class MobilePaymentDto {

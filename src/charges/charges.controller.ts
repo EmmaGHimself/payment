@@ -1,15 +1,4 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Put,
-  Body,
-  Param,
-  UseGuards,
-  HttpStatus,
-  HttpCode,
-  Res,
-} from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Param, UseGuards, HttpStatus, HttpCode, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ChargesService } from './charges.service';
 import { InitiateChargeDto } from './dto/initiate-charge.dto';
@@ -32,7 +21,7 @@ export class ChargesController {
   @ApiResponse({ status: 200, description: 'Charge initiated successfully' })
   @ApiResponse({ status: 400, description: 'Invalid request data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async initiateCharge(@Body() initiateChargeDto: any, @Res() res: Response) {
+  async initiateCharge(@Body() initiateChargeDto: any, @Res() res: Response): Promise<any> {
     return this.chargesService.initiateCharge(initiateChargeDto, res);
   }
 
@@ -41,7 +30,7 @@ export class ChargesController {
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Initiate charge with view URL' })
   @ApiResponse({ status: 200, description: 'Charge view URL generated' })
-  async initiateChargeView(@Body() initiateChargeDto: InitiateChargeDto, @Res() res: Response) {
+  async initiateChargeView(@Body() initiateChargeDto: InitiateChargeDto, @Res() res: Response): Promise<any> {
     return this.chargesService.initiateCharge({ ...initiateChargeDto, use_view: true }, res);
   }
 
@@ -95,10 +84,7 @@ export class ChargesController {
   @UseGuards(AuthGuard, MerchantGuard)
   @ApiOperation({ summary: 'Manually settle a charge' })
   @ApiResponse({ status: 200, description: 'Charge settled successfully' })
-  async settleCharge(
-    @Param('charge_id') chargeId: string,
-    @Body() settlementData: { reason: string; extra_data?: Record<string, any> },
-  ) {
+  async settleCharge(@Param('charge_id') chargeId: string, @Body() settlementData: { reason: string; extra_data?: Record<string, any> }) {
     return this.chargesService.settleCharge(parseInt(chargeId), settlementData);
   }
 }

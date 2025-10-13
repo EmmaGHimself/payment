@@ -11,8 +11,9 @@ import { CHARGE_STATUS } from '../../common/constants/status.constants';
 import { PaymentException } from '../../common/exceptions/payment.exception';
 import { ERROR_CODES } from '../../common/constants/error.constants';
 import { ChargeInfoEntity } from '../../database/entities/charge-info.entity';
-import { InjectQueue } from "@nestjs/bull"
+import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { ConfigEntity } from '@/database/entities/config.entity';
 
 @Injectable()
 export class KnipWebhookHandler {
@@ -28,6 +29,8 @@ export class KnipWebhookHandler {
     @InjectRepository(ChargeMetadataEntity)
     private readonly chargeMetadataRepository: Repository<ChargeMetadataEntity>,
     private readonly configService: ConfigService,
+    @InjectRepository(ConfigEntity) private readonly configRepository: Repository<ConfigEntity>,
+    @InjectQueue('settle-charge') private readonly settleCharge: Queue,
   ) {}
 
   async handle(payload: any, rawBody: Buffer) {
@@ -52,18 +55,11 @@ export class KnipWebhookHandler {
   }
 
   private isSuccessfulEvent(payload: any): boolean {
-    return (
-      payload.event === 'charge.success' ||
-      (payload.event === 'charge.completed' && payload.data.status === 'success')
-    );
+    return payload.event === 'charge.success' || (payload.event === 'charge.completed' && payload.data.status === 'success');
   }
 
   private async markChargeAsSuccessful(charge: ChargeEntity): Promise<void> {
-    await this.chargeRepository.update(charge.id, {
-      status: CHARGE_STATUS.SUCCESSFUL,
-      successful: true,
-    });
-    await this.chargeInfoRepository.update(charge.chargeInfoId, { status: CHARGE_STATUS.SUCCESS });
+    await this.settleCharge.add('settle', { charge_id: charge.id, settle: true });
   }
 
   private async logChargeHistory(

@@ -98,11 +98,11 @@ export class PaymentRequestsController {
     });
   }
 
-  @Get('initiate/:identifier')
-  @ApiOperation({ summary: 'Initiate payment from a payment request' })
-  @ApiResponse({ status: 200, description: 'Payment initiated from request' })
-  @ApiResponse({ status: 404, description: 'Payment request not found' })
-  async payFromRequest(@Param('identifier') identifier: string) {
-    return this.paymentRequestsService.payFromRequest(identifier);
-  }
+  // @Get('initiate/:identifier')
+  // @ApiOperation({ summary: 'Initiate payment from a payment request' })
+  // @ApiResponse({ status: 200, description: 'Payment initiated from request' })
+  // @ApiResponse({ status: 404, description: 'Payment request not found' })
+  // async payFromRequest(@Param('identifier') identifier: string) {
+  //   return this.paymentRequestsService.payFromRequest(identifier);
+  // }
 }

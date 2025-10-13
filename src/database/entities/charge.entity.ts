@@ -96,7 +96,7 @@ export class ChargeEntity {
   otpCount: number;
 
   @ManyToOne(() => ChargeInfoEntity, (chargeInfo) => chargeInfo.charges)
-  @JoinColumn({ name: 'chargeInfoId' })
+  @JoinColumn({ name: 'charge_info_id' })
   chargeInfo: ChargeInfoEntity;
 
   @OneToMany(() => ChargeHistoryEntity, (history) => history.charge)

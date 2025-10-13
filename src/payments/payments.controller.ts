@@ -1,14 +1,4 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Body,
-  Param,
-  UseGuards,
-  HttpCode,
-  HttpStatus,
-  Res,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, HttpCode, HttpStatus, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { CardPaymentDto, TransferPaymentDto, MobilePaymentDto } from './dto/payment.dto';
@@ -23,6 +13,7 @@ export class PaymentsController {
 
   @Post('/pay/card')
   @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.INTERNAL_SERVER_ERROR)
   @ApiOperation({ summary: 'Process card payment' })
   @ApiResponse({ status: 200, description: 'Card payment processed' })
   async processCardPayment(@Body() cardPaymentDto: any, @Res() response: Response) {
@@ -47,7 +38,7 @@ export class PaymentsController {
   @Get('verify/:reference')
   @ApiOperation({ summary: 'Verify payment status' })
   @ApiResponse({ status: 200, description: 'Payment verification result' })
-  async verifyPayment(@Param('reference') reference: string) {
+  async verifyPayment(@Param('reference') reference: string): Promise<any> {
     return this.paymentsService.verifyPayment(reference);
   }
 }

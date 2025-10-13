@@ -20,6 +20,7 @@ export interface PaymentRequest {
   };
   metadata?: Record<string, any>;
   merchant_name?: string;
+  merchant_reference?: string;
 }
 
 export interface PaymentResponse {

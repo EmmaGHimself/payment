@@ -13,6 +13,7 @@ import { ProvidersModule } from '../providers/providers.module';
 import { KnipWebhookHandler } from './handlers/knip-webhook.handler';
 import { ChargeInfoEntity } from 'src/database/entities/charge-info.entity';
 import { BullModule } from '@nestjs/bull';
+import { ConfigEntity } from '@/database/entities/config.entity';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { BullModule } from '@nestjs/bull';
       ChargeMetadataEntity,
       RequestLogEntity,
       ChargeInfoEntity,
+      ConfigEntity
     ]),
     BullModule.registerQueue({ name: 'settle-charge' }),
     HttpModule,

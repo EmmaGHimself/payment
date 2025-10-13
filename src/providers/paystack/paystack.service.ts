@@ -4,20 +4,13 @@ import { HttpService } from '@nestjs/axios';
 import * as crypto from 'crypto';
 import { BasePaymentProvider } from '../base/base-payment-provider';
 import { CircuitBreakerService } from '../base/circuit-breaker.service';
-import {
-  PaymentRequest,
-  PaymentResponse,
-} from '../../common/interfaces/payment-provider.interface';
+import { PaymentRequest, PaymentResponse } from '../../common/interfaces/payment-provider.interface';
 import { PAYMENT_PROVIDERS } from '../../common/constants/payment.constants';
 import { MaskUtil } from '../../common/utils/mask.util';
 
 @Injectable()
 export class PaystackService extends BasePaymentProvider {
-  constructor(
-    httpService: HttpService,
-    configService: ConfigService,
-    circuitBreakerService: CircuitBreakerService,
-  ) {
+  constructor(httpService: HttpService, configService: ConfigService, circuitBreakerService: CircuitBreakerService) {
     super(httpService, configService, circuitBreakerService, PAYMENT_PROVIDERS.PAYSTACK);
   }
 
@@ -34,11 +27,15 @@ export class PaystackService extends BasePaymentProvider {
         currency: request.currency,
         card: request.card,
         metadata: {
-          ...request.metadata,
           custom_fields: [
             {
               display_name: 'Merchant reference',
               variable_name: 'merchant_reference',
+              value: request.merchant_reference,
+            },
+            {
+              display_name: 'Identifier',
+              variable_name: 'identifier',
               value: request.reference,
             },
           ],
@@ -51,17 +48,15 @@ export class PaystackService extends BasePaymentProvider {
         return {
           ...response.data,
           status: 'success',
-          message: response.data.display_text || response.data.message,
+          message: response.data.message, //response.data.display_text || response.data.message,
           action_required: nextAction,
         };
       }
-      throw new InternalServerErrorException({
-        message: response.data.display_text || response.data.message,
-        data: response.data,
-        action_required: nextAction,
-      });
+      if (nextAction === 'terminate') throw new InternalServerErrorException(response);
     } catch (error) {
-      return this.handleError(error);
+      console.log(JSON.stringify(error));
+      throw new InternalServerErrorException(error?.data?.message || 'Charge creation failed');
+      // return this.handleError(error);
     }
   }
 
@@ -89,10 +84,7 @@ export class PaystackService extends BasePaymentProvider {
     }
   }
 
-  async submitValidation(
-    reference: string,
-    validationData: Record<string, any>,
-  ): Promise<PaymentResponse> {
+  async submitValidation(reference: string, validationData: Record<string, any>): Promise<PaymentResponse> {
     try {
       const { type, ...data } = validationData;
       let endpoint = '';
@@ -179,10 +171,7 @@ export class PaystackService extends BasePaymentProvider {
   }
 
   private verifyWebhookSignature(payload: any, signature: string): boolean {
-    const hash = crypto
-      .createHmac('sha512', this.config.credentials.webhookSecret)
-      .update(JSON.stringify(payload))
-      .digest('hex');
+    const hash = crypto.createHmac('sha512', this.config.credentials.webhookSecret).update(JSON.stringify(payload)).digest('hex');
 
     return hash === signature;
   }

@@ -1,14 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { AxiosRequestConfig, AxiosResponse } from 'axios';
-import {
-  IPaymentProvider,
-  PaymentProviderConfig,
-  PaymentRequest,
-  PaymentResponse,
-} from '../../common/interfaces/payment-provider.interface';
+import { IPaymentProvider, PaymentProviderConfig, PaymentRequest, PaymentResponse } from '../../common/interfaces/payment-provider.interface';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { PaymentProvider } from '../../common/constants/payment.constants';
 
@@ -38,7 +33,6 @@ export abstract class BasePaymentProvider implements IPaymentProvider {
     data?: any,
     headers?: Record<string, string>,
   ): Promise<AxiosResponse<T>> {
-    console.log(this.config)
     const config: AxiosRequestConfig = {
       method,
       url: `${this.config.baseUrl}${url}`,
@@ -53,21 +47,18 @@ export abstract class BasePaymentProvider implements IPaymentProvider {
 
     const circuitBreakerKey = `${this.getName()}_${method}_${url}`;
 
-    return this.circuitBreakerService.execute(
-      circuitBreakerKey,
-      async () => {
-        this.logger.debug(`Making ${method} request to ${config.url}`);
-        const data = await firstValueFrom(this.httpService.request(config));
-        return data.data;
-      },
-    );
+    return this.circuitBreakerService.execute(circuitBreakerKey, async () => {
+      this.logger.debug(`Making ${method} request to ${config.url}`);
+      const data = await firstValueFrom(this.httpService.request(config));
+      return data.data;
+    });
   }
 
   protected abstract getDefaultHeaders(): Record<string, string>;
 
   protected handleError(error: any): PaymentResponse {
-    this.logger.error(`Payment provider error:`, error);
-    
+    this.logger.error(`Payment provider error:`, error.message);
+
     if (error.response) {
       return {
         success: false,
@@ -76,6 +67,8 @@ export abstract class BasePaymentProvider implements IPaymentProvider {
         data: error.response.data,
       };
     }
+
+    throw new InternalServerErrorException('Payment provider error');
 
     return {
       success: false,

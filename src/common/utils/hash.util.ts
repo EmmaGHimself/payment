@@ -21,13 +21,26 @@ export class HashUtil {
     return crypto.createHmac('sha512', secret).update(data).digest('hex');
   }
 
-  static generateIdentifier(length: number = 10): string {
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
+  static generateIdentifier(length: number): string {
+    const date = new Date(),
+      dformat = [
+        date.getFullYear(),
+        date.getMonth() + 1,
+        date.getDate(),
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds(),
+      ].join('');
+    return `CH_${dformat}_${this.generateRandomCharacter(length)}`;
+  }
+
+  static generateRandomCharacter(length: number): string {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     for (let i = 0; i < length; i++) {
-      result += characters.charAt(Math.floor(Math.random() * characters.length));
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
     }
-    return result;
+    return text;
   }
 
   static generateReference(): string {
