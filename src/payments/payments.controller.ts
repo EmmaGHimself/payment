@@ -1,9 +1,20 @@
-import { Controller, Post, Get, Body, Param, UseGuards, HttpCode, HttpStatus, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  Res,
+  Req,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { CardPaymentDto, TransferPaymentDto, MobilePaymentDto } from './dto/payment.dto';
 import { AuthGuard } from '../common/guards/auth.guard';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 
 @ApiTags('Payments')
 @Controller('/v2')
@@ -16,8 +27,8 @@ export class PaymentsController {
   @HttpCode(HttpStatus.INTERNAL_SERVER_ERROR)
   @ApiOperation({ summary: 'Process card payment' })
   @ApiResponse({ status: 200, description: 'Card payment processed' })
-  async processCardPayment(@Body() cardPaymentDto: any, @Res() response: Response) {
-    return this.paymentsService.processCardPayment(cardPaymentDto, response);
+  async processCardPayment(@Body() cardPaymentDto: any, @Res() response: Response, @Req() req: Request) {
+    return this.paymentsService.processCardPayment(cardPaymentDto, response, req);
   }
 
   @Post('/pay/paywithtransfer')
@@ -40,5 +51,10 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Payment verification result' })
   async verifyPayment(@Param('reference') reference: string): Promise<any> {
     return this.paymentsService.verifyPayment(reference);
+  }
+
+  @Post('/bnpl/initiate/klump')
+  async initiateKlumpCharge(@Body() payload: any, @Res() response: Response) {
+    return this.paymentsService.processKlumpPayment(payload, response);
   }
 }

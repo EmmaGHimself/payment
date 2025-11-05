@@ -1,4 +1,21 @@
 // src/main.ts
+// APM must be started before any other imports
+const apm = require('elastic-apm-node');
+
+apm.start({
+  // Override service name from package.json
+  serviceName: process.env.APM_SERVICE_NAME || 'payment-service-v2',
+  serverUrl: process.env.APM_SERVER_URL || 'https://apm.konga.com',
+  environment: process.env.APM_SERVICE_ENVIRONMENT || process.env.NODE_ENV || 'production',
+  active: process.env.ELASTIC_APM_ACTIVE !== 'false',
+  logLevel: 'info',
+  captureBody: 'all',
+  captureHeaders: true,
+  captureErrorLogStackTraces: 'always',
+  centralConfig: false,
+  metricsInterval: '30s',
+});
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -25,10 +42,7 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
 
   // Global interceptors
-  app.useGlobalInterceptors(
-    new LoggingInterceptor(),
-    new ResponseInterceptor(),
-  );
+  app.useGlobalInterceptors(new LoggingInterceptor(), new ResponseInterceptor());
 
   // CORS
   app.enableCors({
@@ -44,13 +58,13 @@ async function bootstrap() {
     .setVersion('1.0')
     .addBearerAuth()
     .build();
-  
+
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
-  
+
   console.log(`Application is running on: http://localhost:${port}`);
   console.log(`API Documentation: http://localhost:${port}/api/docs`);
 }

@@ -1,4 +1,5 @@
 import { PaymentAction, PaymentProvider } from '../constants/payment.constants';
+import { ChargeEntity } from '../../database/entities/charge.entity';
 
 export interface PaymentProviderConfig {
   provider: PaymentProvider;
@@ -18,9 +19,11 @@ export interface PaymentRequest {
     expiry_month: string;
     expiry_year: string;
   };
+  pin: string;
   metadata?: Record<string, any>;
   merchant_name?: string;
   merchant_reference?: string;
+  charge?: ChargeEntity;
 }
 
 export interface PaymentResponse {

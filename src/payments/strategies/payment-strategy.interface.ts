@@ -1,3 +1,4 @@
+import { ChargeEntity } from '@/database/entities/charge.entity';
 import { PaymentMethod } from '../../common/constants/payment.constants';
 
 export interface PaymentRequest {
@@ -24,6 +25,6 @@ export interface PaymentResponse {
 
 export interface IPaymentStrategy {
   getPaymentMethod(): PaymentMethod;
-  processPayment(request: PaymentRequest & Record<string, any>): Promise<PaymentResponse>;
+  processPayment(request: PaymentRequest & Record<string, any> | ChargeEntity): Promise<PaymentResponse>;
   verifyPayment(reference: string): Promise<PaymentResponse>;
 }

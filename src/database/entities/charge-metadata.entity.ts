@@ -11,7 +11,7 @@ import {
 import { ChargeEntity } from './charge.entity';
 
 @Entity('charge_metadata')
-@Index(['chargeId', 'name'], { unique: true })
+// @Index(['chargeId', 'name'], { unique: true })
 @Index(['name'])
 export class ChargeMetadataEntity {
   @PrimaryGeneratedColumn()
@@ -27,7 +27,7 @@ export class ChargeMetadataEntity {
   value: string;
 
   @ManyToOne(() => ChargeEntity, (charge) => charge.metadata, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'chargeId' })
+  @JoinColumn({ name: 'charge_id' })
   charge: ChargeEntity;
 
   @CreateDateColumn({ name: 'created_at' })

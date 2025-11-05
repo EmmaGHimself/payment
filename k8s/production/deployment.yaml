@@ -1,0 +1,521 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-service-v2
+  labels:
+    app: payments-service-v2
+    version: v2
+spec:
+  selector:
+    matchLabels:
+      app: payments-service-v2
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: payments-service-v2
+        version: v2
+    spec:
+      volumes:
+      - name: kongapay-config
+        configMap:
+          name: kongapay-config
+      imagePullSecrets:
+      - name: default-secret
+      containers:
+      - image: swr.af-south-1.myhuaweicloud.com/kongapay/payments-service-v2:latest
+        name: payments-service-v2
+        imagePullPolicy: Always
+        resources:
+         requests:
+           cpu: "800m"
+           memory: "350Mi"
+         limits:
+           cpu: "1"
+           memory: "400Mi"
+        ports:
+        - containerPort: 80
+          protocol: TCP
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: kongapay-config
+          mountPath: /creds/kongapay-config.json
+          subPath: kongapay-config.json
+        env:
+        - name: APPLICATION_ENV
+          value: production
+        - name: NODE_ENV
+          value: production
+        - name: PORT
+          value: "80"
+        - name: NODE_PATH
+          value: .
+
+        #DB
+        - name: DATABASE_HOST
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: db-host
+        - name: DATABASE_PASS
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: payservice-db-password
+        - name: DATABASE_PORT
+          value: "3306"
+        - name: DATABASE_NAME
+          value: prod_payment_service
+        - name: DATABASE_USER
+          value: prod_payservice
+        - name: OLD_DATABASE_HOST
+          value: "azure-mysql.mysql.svc.cluster.local"
+        - name: OLD_DATABASE_PASS
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: pgtx-db-password
+        - name: OLD_DATABASE_PORT
+          value: "3306"
+        - name: OLD_DATABASE_NAME
+          value: prod_db_pg_tx
+        - name: OLD_DATABASE_USER
+          value: prod_pg_tx
+        - name: DATABASE_POOL_MIN
+          value: "1"
+        - name: DATABASE_POOL_MAX
+          value: "4"
+
+        #JWT
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: kpay-jwt-secret
+
+        #API
+        - name: KPAYAPI_URL
+          value: http://kpayapi
+        - name: CARD_SERVICE_BASE_URL
+          value: http://paymentgatewaytx
+        - name: CARD_SERVICE_OTP_PATH
+          value: /v1/cards/validate
+        - name: CARD_SERVICE_PAY_PATH
+          value: /v1/cards/pay
+        - name: CARD_SERVICE_REFUND_PATH
+          value: /v1/cards/refund
+        - name: CARD_SERVICE_CYBS_ENROLL_PATH
+          value: /v1/cards/cybersource/enroll
+        - name: CARD_SERVICE_CYBS_VALIDATE_PATH
+          value: /v1/cards/cybersource/validate
+        - name: CARD_CHANNEL_IDENTIFIER
+          value: chn_002_in3sw
+        - name: TRANSFER_CHANNEL_IDENTIFIER
+          value: transfer
+
+        - name: KONGAPAY_PAY_PATH
+          value: /v5/web/payment
+        - name: KONGAPAY_MERCHANT_KEY
+          value: live_pr_d0dfb0726fc98b35476380ec5c2cccca
+        - name: KONGAPAY_TEST_MERCHANT_KEY
+          value: test_pr_7d2853adde3539729d6c5c18d6b34d0f
+        - name: KONGAPAY_OTP_PATH
+          value: /v5/web/request/token
+        - name: KONGAPAY_REQUERY_PATH
+          value: /v5/payment
+        - name: CARD_REQUERY_PATH
+          value: /v1/cards/requery
+        - name: CARD_CARDINAL_PATH
+          value: /v1/cards/cardinal
+        - name: USERS_CARD_PATH
+          value: /v1/cards/user/cards
+        - name: FETCH_LOAN_TENURE
+          value: /v5/loan/tenure
+        - name: LOAN_PAY
+          value: /v5/loan/pay
+        - name: LOAN_REQUERY
+          value: /v5/loan
+        - name: UPDATE_LOAN_DELIVERY
+          value: /v5/loan/deliveries
+        - name: KONGAPAY_PAY_VIA_TOKEN_PATH
+          value: /v5/recur/pay
+        - name: KONGAPAY_GROUP_WALLET_BALANCE_PATH
+          value: /v5/group/wallet/balance
+        - name: KONGAPAY_GROUP_TRANSFER_PATH
+          value: /v5/group/transfer
+        - name: KONGAPAY_GROUP_REVERSAL_PATH
+          value: /v5/group/transaction/reversal
+
+        - name: MMO_SERVICE_BASE_URL
+          value: http://mmo-service
+        - name: PAY_ATTITUDE_PAY_WITH_PHONE_PATH
+          value: /v1/pay/payattitude/phone
+        - name: SDK_BASE_URL
+          value: https://kongapay-pg.kongapay.com/v2/initiatePage
+        - name: PUSH_SERVICE_BASE_URL
+          value: http://ussd-service
+        - name: USSD_INITIATE_PATH
+          value: /v1/ussd/initiate
+        - name: MANDATE_SERVICE_BASE_URL
+          value: http://mandate-service
+        - name: CHARGE_ACCOUNT_PATH
+          value: /payments/accounts
+        - name: RAVE_BANKS
+          value: /banks
+        - name: CARD_ENROL_PATH
+          value: /v1/cards/enrol
+        - name: REFUND_CHARGE_PATH
+          value: /transactions/refund
+        - name: PUSH_BANKS_PATH
+          value: /v1/banks
+        - name: PUSH_REQUERY_PATH
+          value: /v1/requery/merchant
+        - name: MANDATE_REQUERY_CHARGE_PATH
+          value: /transactions/requery
+        - name: CARD_SERVICE_PAY_VIA_TOKEN_PATH
+          value: /v1/cards/pay/token
+        - name: CARD_SERVICE_PROCESS_3D_SECURE
+          value: /v1/cards/process/acs
+        - name: CARD_SERVICE_VERIFY_RAVE_3DS
+          value: /v1/cards/rave/verify
+        - name: MONNIFY_INITIATE_PATH
+          value: /v1/monnify/transaction/initiate
+        - name: MONNIFY_REQUERY_PATH
+          value: /v1/monnify/transaction/status
+        - name: MONNIFY_COMPLETE_PATH
+          value: /v1/monnify/transaction/complete
+        - name: CARD_SERVICE_ACCESS_ENROLL
+          value: /v1/cards/access/enrol
+        - name: CARD_SERVICE_VERIFY_ACCESS_3DS
+          value: /v1/cards/access/verify
+
+        #AUTH
+        - name: KONGAPAY_AUTH_URL
+          value: http://kpayoauth/
+        - name: OAUTH_REQUEST_TIMEOUT
+          value: "150000"
+        - name: OAUTH_RETRY_COUNT
+          value: "3"
+        - name: OAUTH_RETRY_DELAY
+          value: "100"
+        - name: KONGAPAY_CLIENT_ID
+          value: kongapay
+        - name: KONGAPAY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: kongapay-client-secret
+        - name: KONGAPAY_REFUND_PATH
+          value: /v5/web/refund
+        - name: VALIDATE_OTP_PATH
+          value: /payments/accounts/validations
+        - name: QR_INITIATE_PATH
+          value: /v1/qr/initiate
+        - name: VERIFY_CHARGE_PATH
+          value: /transactions/verifications
+
+        #ALIPAY
+        - name: ALIPAY_PATH
+          value: /v1/alipay
+        - name: ALIPAY_COMPLETION_PATH
+          value: /v1/alipay/complete
+
+        #REDIS
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_HOST
+          value: "kredis-svc.default.svc.cluster.local"
+        - name: REDIS_DATABASE
+          value: "3"
+
+        #Others
+        - name: TERMINATING_ERROR_CODES
+          value: "122,102,103,104,129,130,E0114,E0021,E0140,E0282,121,E008,E007,E009,E010,E004,E002,E001,E0036,TE103,TE008,E0435"
+        - name: MANDATE_HOOK
+          value: /payment/notification
+
+        # Hermes
+        - name: HERMES_BASE_URL
+          value: https://hermes.igbimo.com/v2/notifications
+
+        - name: KONGA_AUTH_URL
+          value: https://auth.igbimo.com/v2
+        - name: KONGA_AUTH_AUTHORIZE_PATH
+          value: /authorize
+        - name: KONGA_AUTH_TOKEN_PATH
+          value: /token
+        - name: KONGA_CLIENT_ID
+          value: kpay_web
+        - name: KONGA_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: konga-client-secret
+
+        #Loggly
+        - name: LOGGLY_TAG
+          value: prod_payment_service
+
+          #NewRelic
+        - name: newrelic_licence
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: new-relic-secret
+        - name: newrelic_appname
+          value: "Live-KPAY-PaymentService:KPAYPS"
+
+        #Payment request
+        - name: PAYMENT_REQUEST_BASE_URL
+          value: https://kongapay-pg.kongapay.com/pay
+        - name: PAYMENT_REQUEST_DEFAULT_CALLBACK
+          value: https://kongapay.com
+
+          #Access Quickbucks
+        - name: ACCESS_QUICKBUCKS_BASE_URL
+          value: https://quickbucks-merchant-pilot.accessbankplc.com
+        - name: ACCESS_QUICKBUCKS_ELIGIBILITY_PATH
+          value: /api/payment/eligibility
+        - name: ACCESS_QUICKBUCKS_INITIATE_PATH
+          value: /api/payment/initialize
+        - name: ACCESS_QUICKBUCKS_VERIFICATION_PATH
+          value: /api/payment/verify
+        - name: ACCESS_QUICKBUCKS_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: access-quickbucks-public-key
+        - name: ACCESS_QUICKBUCKS_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: access-quickbucks-secret-key
+
+          # Simbrella
+        - name: SIMBRELLA_BASE_URL
+          value: ''
+        - name: SIMBRELLA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: simbrella-api-key
+        - name: SIMBRELLA_KPAY_MERCHANT_ID
+          value: ''
+        - name: SIMBRELLA_CALLBACK_URL
+          value: https://ignite.kongapay.com/v1/payment/simbrella-callback
+
+          # Fidelity PayGatePlus
+        - name: PAYGATEPLUS_CREATE_ACCOUNT_PATH
+          value: /v1/paygateplus/account-create
+        - name: PAYGATEPLUS_TRANSACTION_QUERY_PATH
+          value: /v1/paygateplus/query-transaction
+
+        - name: PAY_WITH_TRANSFER_INIT_PATH
+          value: /v1/transfer
+
+        - name: RAVE_HASH_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: rave-hash-key
+              optional: true
+
+
+          # Polaris Finance
+        - name: POLARIS_FINANCE_BASE_URL
+          value: ''
+        - name: POLARIS_FINANCE_TOKEN_PATH
+          value: /DigitalIdentity/connect/token
+        - name: POLARIS_FINANCE_ELIGIBILITY_PATH
+          value: /Polaris.Digital.lending.service.Api/api/External/CheckEligibilityPhoneNumber
+        - name: POLARIS_FINANCE_OTP_VALIDATION_PATH
+          value: /Polaris.Digital.lending.service.Api/api/External/CheckEligibility
+        - name: POLARIS_FINANCE_RESEND_OTP_PATH
+          value: /Polaris.Digital.lending.service.Api/api/External/ResendOtp
+        - name: POLARIS_FINANCE_VERIFICATION_PATH
+          value: /Polaris.Digital.lending.service.Api/api/External/QueryLoanRequest
+        - name: POLARIS_FINANCE_CLIENT_ID
+          value: ''
+        - name: POLARIS_FINANCE_CLIENT_SECRET
+          value: ''
+        - name: POLARIS_FINANCE_GRANT_TYPE
+          value: client_credentials
+        - name: POLARIS_FINANCE_PAYMENT_URL
+          value: ''
+
+          #Eagle Encryption
+        - name: EAGLE_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: eagle-encryption-key
+              optional: true
+        - name: EAGLE_ENCRYPTION_IV
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: eagle-encryption-iv
+              optional: true
+        - name: EAGLE_ENCRYPTION_METHOD
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: eagle-encryption-method
+              optional: true
+
+          # Skaleet Service Domain API
+        - name: SKALEET_SDOM_BASE_URL
+          value: http://eagle/request/sdom
+        - name: SKALEET_SDOM_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: payment_gateway_service_domain_client_id
+              optional: true
+        - name: SKALEET_SDOM_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: payment_gateway_service_domain_client_secret
+              optional: true
+        - name: SKALEET_SDOM_CLIENT_SCOPES
+          value: "posting sda_accounts_view identity_view"
+
+          # Skaleet Company API
+        - name: SKALEET_COMPANY_BASE_URL
+          value: http://eagle/request/company
+        - name: SKALEET_COMPANY_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: payment_gateway_company_client_id
+              optional: true
+        - name: SKALEET_COMPANY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: payment_gateway_company_client_secret
+              optional: true
+        - name: SKALEET_COMPANY_CLIENT_SCOPES
+          value: "sda_accounts_view identity_view"
+
+          # Sphinx API
+        - name: SPHINX_BASE_URL
+          value: http://eagle/request/sphinx
+
+          # Momo API
+        - name: MOMO_BASE_URL
+          value: https://api.pay.hwipg.com/payment/v1/charge
+        - name: MOMO_SIGNATURE_TYPE
+          value: SHA256withRSA
+        - name: MOMO_CHANNEL
+          value: nigeria_momo_collection
+        - name: MOMO_NOTIFICATION_URL
+          value: https://eagle.kongapay.com/request/webhook/momo
+        - name: MOMO_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: momo-app-id
+              optional: true
+        - name: MOMO_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: momo-private-key
+              optional: true
+
+          # PAYSTACK API
+        - name: PAYSTACK_BASE_URL
+          value: https://api.paystack.co
+        - name: PAYSTACK_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: paystack-public-key
+              optional: true
+        - name: PAYSTACK_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: paystack-secret-key
+              optional: true
+
+        # Elastic APM Configuration
+        - name: APM_SERVICE_NAME
+          value: payments_service_v2
+        - name: APM_SERVER_URL
+          value: https://apm.konga.com
+        - name: APM_SERVICE_ENVIRONMENT
+          value: production
+        - name: ELASTIC_APM_ACTIVE
+          value: "true"
+        - name: ELASTIC_APM_LOG_LEVEL
+          value: info
+
+        # EAGLE API BASE
+        - name: EAGLE_BASE_URL
+          value: http://eagle/request
+
+         # STANBIC API
+        - name: STANBICIBTC_BASE_URL
+          value: https://stanbicibtc.gateway.mastercard.com
+        - name: STANBICIBTC_MERCHANT_ID
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: stanbic-merchant-id
+              optional: true
+        - name: STANBICIBTC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: stanbic-password
+              optional: true
+        - name: STANBIC_CALLBACK_URL
+          value: https://kongapay-pg.kongapay.com/v2/stanbic/callback
+
+          #KNIP
+        - name: KNIP_BASE_URL
+          value: https://eagle.kongapay.com/request/knip
+        - name: KNIP_CALLBACK_URL
+          value: https://ps.kongapay.com/v2/hook/knip
+
+        # TRANSFER SERVICE
+        - name: DEFAULT_TRANSFER_PROVIDER
+          value: paygateplus
+
+        # Klump
+        - name: KLUMP_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: KLUMP_SECRET_KEY
+              optional: true
+        - name: KLUMP_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kongapay-secret
+              key: KLUMP_PUBLIC_KEY
+              optional: true

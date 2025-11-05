@@ -5,6 +5,8 @@ import { InitiateChargeDto } from './dto/initiate-charge.dto';
 import { ValidateOtpDto } from './dto/validate-otp.dto';
 import { CancelChargeDto } from './dto/cancel-charge.dto';
 import { RefundChargeDto } from './dto/refund-charge.dto';
+import { PaystackValidationDto } from './dto/paystack-validation.dto';
+import { PaystackRequeryDto } from './dto/paystack-requery.dto';
 import { AuthGuard } from '../common/guards/auth.guard';
 import { MerchantGuard } from '../common/guards/merchant.guard';
 import { Response } from 'express';
@@ -42,6 +44,16 @@ export class ChargesController {
   @ApiResponse({ status: 200, description: 'OTP validated successfully' })
   async validateOtp(@Body() validateOtpDto: ValidateOtpDto) {
     return this.chargesService.validateOtp(validateOtpDto);
+  }
+
+  @Post('submit-validation')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Submit validation data (OTP, PIN, phone, birthday, address)' })
+  @ApiResponse({ status: 200, description: 'Validation submitted successfully' })
+  async submitValidation(@Body() validationDto: any) {
+    return this.chargesService.submitValidation(validationDto);
   }
 
   @Post('cancel/:identifier')
@@ -86,5 +98,27 @@ export class ChargesController {
   @ApiResponse({ status: 200, description: 'Charge settled successfully' })
   async settleCharge(@Param('charge_id') chargeId: string, @Body() settlementData: { reason: string; extra_data?: Record<string, any> }) {
     return this.chargesService.settleCharge(parseInt(chargeId), settlementData);
+  }
+
+  @Post('paystack/validation')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Submit Paystack validation (OTP, phone, birthday, address)' })
+  @ApiResponse({ status: 200, description: 'Validation submitted successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid validation data' })
+  async paystackValidation(@Body() validationDto: PaystackValidationDto) {
+    return this.chargesService.paystackValidation(validationDto);
+  }
+
+  @Post('paystack/requery')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Requery Paystack charge status' })
+  @ApiResponse({ status: 200, description: 'Charge status retrieved successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid charge identifier' })
+  async requeryPaystackCharge(@Body() requeryDto: PaystackRequeryDto) {
+    return this.chargesService.requeryPaystackCharge(requeryDto);
   }
 }

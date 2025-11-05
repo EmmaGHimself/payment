@@ -2,6 +2,9 @@ import { Injectable, Logger, Scope } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as winston from 'winston';
 
+// Import Elastic APM for custom context and error tracking
+const apm = require('elastic-apm-node');
+
 export interface LogContext {
   requestId?: string;
   userId?: string;
@@ -75,18 +78,51 @@ export class LoggerUtil {
 
   log(message: string, context?: LogContext) {
     this.winstonLogger.info(message, { context });
+
+    // Send custom context to APM
+    if (apm.isStarted()) {
+      const currentTransaction = apm.currentTransaction;
+      if (currentTransaction) {
+        currentTransaction.addLabels({ ...this.context, ...context });
+      }
+    }
   }
 
   error(message: string, error?: Error | string, context?: LogContext) {
+    const errorObj = error instanceof Error ? error : new Error(error as string);
+
     this.winstonLogger.error(message, {
       context,
       stack: error instanceof Error ? error.stack : undefined,
       error: error instanceof Error ? error.message : error,
     });
+
+    // Capture error in APM
+    if (apm.isStarted()) {
+      apm.captureError(errorObj, {
+        message,
+        custom: {
+          ...this.context,
+          ...context,
+        },
+      });
+    }
   }
 
   warn(message: string, context?: LogContext) {
     this.winstonLogger.warn(message, { context });
+
+    // Add warning context to APM
+    if (apm.isStarted()) {
+      const currentTransaction = apm.currentTransaction;
+      if (currentTransaction) {
+        currentTransaction.addLabels({
+          level: 'warning',
+          ...this.context,
+          ...context
+        });
+      }
+    }
   }
 
   debug(message: string, context?: LogContext) {
@@ -112,6 +148,16 @@ export class LoggerUtil {
       error: error?.message,
       duration: Date.now() - (request.startTime || Date.now()),
     };
+
+    // Create custom APM span for provider calls
+    if (apm.isStarted()) {
+      const span = apm.startSpan(`${provider}:${action}`);
+      if (span) {
+        span.setType('external', 'http', provider);
+        span.addLabels(logData);
+        span.end();
+      }
+    }
 
     if (error) {
       this.error(`Provider call failed: ${provider}:${action}`, error, logData);

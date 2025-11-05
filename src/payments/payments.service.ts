@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Response } from 'express';
@@ -14,6 +20,7 @@ import { CHARGE_STATUS } from '../common/constants/status.constants';
 
 interface PaymentResponse {
   status: 'success' | 'error';
+  message?: string;
   data?: any;
   error?: {
     message: string;
@@ -36,13 +43,17 @@ export class PaymentsService {
     @InjectQueue('settle-charge') private readonly queue: Queue,
   ) {}
 
-  async processCardPayment(dto: CardPaymentDto, res: Response): Promise<void> {
+  async processCardPayment(dto: CardPaymentDto, res: Response, req: any): Promise<void> {
     try {
       this.logger.log(`Initiating card payment processing: ${dto.identifier}`);
 
       this.validateCardPaymentDto(dto);
       const chargeInfo = await this.findChargeInfo(dto.charge_info_id);
-      const charge = await this.createCharge(chargeInfo, dto.identifier, PAYMENT_PROVIDERS.PAYSTACK);
+      const charge = await this.createCharge(
+        chargeInfo,
+        dto.identifier,
+        PAYMENT_PROVIDERS.PAYSTACK,
+      );
 
       const result = await this.cardPaymentStrategy.processPayment({
         amount: chargeInfo.amount,
@@ -56,13 +67,40 @@ export class PaymentsService {
         cvv: dto.cvv,
         expiry: dto.expiry,
         pin: dto.pin,
+        charge,
       });
 
-      await this.queueSettlement(charge.id);
-      this.sendResponse(res, { status: 'success', data: result });
+      // Only queue settlement if payment is completed
+      if (result.action_required && result.action_required.includes('completed')) {
+        await this.queueSettlement(charge.id);
+      }
+
+      return this.sendResponse(res, {
+        status: 'success',
+        message: 'Process card payment',
+        data: result,
+      });
     } catch (error) {
-      console.log(JSON.stringify(error), error.message || error.data);
-      throw new InternalServerErrorException('Failed to process card payment');
+      this.logger.error(`Card payment processing failed: ${dto.identifier}`, {
+        error: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+      });
+
+      // Extract meaningful error message from provider
+      const errorMessage =
+        error.response?.data?.data?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        'Card payment processing failed';
+
+      return this.sendResponse(res, {
+        status: 'error',
+        error: {
+          message: errorMessage,
+          code: error.status || 400,
+        },
+      });
     }
   }
 
@@ -82,11 +120,13 @@ export class PaymentsService {
         description: chargeInfo.description || dto.description,
         customerName: dto.name,
         merchant_name: chargeInfo.merchantName,
+        pin: null,
       });
+      // console.log(result)
 
-      if (result.status === 'success') {
-        await this.queueSettlement(charge.id);
-      }
+      // if (result.status === 'success') {
+      //   await this.queueSettlement(charge.id);
+      // }
 
       this.sendResponse(res, { status: 'success', data: result });
     } catch (error) {
@@ -94,12 +134,27 @@ export class PaymentsService {
     }
   }
 
+  async processKlumpPayment(dto: any, res: Response): Promise<any> {
+    let charge = await this.chargeRepository.findOne({ where: { identifier: dto.identifier } });
+    if (charge) {
+      return res
+        .status(200)
+        .json({ status: 'success', data: { message: 'Charge already exist!' } });
+    }
+    const charge_info = await this.findChargeInfo(dto.charge_info_id);
+    charge = await this.createCharge(charge_info, dto.identifier, 'klump');
+    return res.status(200).json({ status: 'success', data: { message: 'Charge created!' } });
+  }
+
   async processMobilePayment(dto: MobilePaymentDto): Promise<void> {
     this.logger.warn(`Mobile payment attempted but not implemented: ${dto.identifier}`);
     throw new BadRequestException('Mobile payments are not yet supported');
   }
 
-  async verifyPayment(reference: string, paymentMethod: string = PAYMENT_METHODS.CARD): Promise<PaymentResponse> {
+  async verifyPayment(
+    reference: string,
+    paymentMethod: string = PAYMENT_METHODS.CARD,
+  ): Promise<PaymentResponse> {
     try {
       this.logger.log(`Verifying payment: ${reference} (method: ${paymentMethod})`);
 
@@ -109,9 +164,15 @@ export class PaymentsService {
 
       switch (paymentMethod) {
         case PAYMENT_METHODS.CARD:
-          return { status: 'success', data: await this.cardPaymentStrategy.verifyPayment(reference) };
+          return {
+            status: 'success',
+            data: await this.cardPaymentStrategy.verifyPayment(reference),
+          };
         case PAYMENT_METHODS.BANK_TRANSFER:
-          return { status: 'success', data: await this.transferPaymentStrategy.verifyPayment(reference) };
+          return {
+            status: 'success',
+            data: await this.transferPaymentStrategy.verifyPayment(reference),
+          };
         default:
           throw new BadRequestException(`Unsupported payment method: ${paymentMethod}`);
       }
@@ -137,7 +198,11 @@ export class PaymentsService {
     return chargeInfo;
   }
 
-  private async createCharge(chargeInfo: ChargeInfoEntity, identifier: string, service?: string): Promise<ChargeEntity> {
+  private async createCharge(
+    chargeInfo: ChargeInfoEntity,
+    identifier: string,
+    service?: string,
+  ): Promise<ChargeEntity> {
     try {
       const charge = this.chargeRepository.create({
         identifier,
@@ -209,7 +274,11 @@ export class PaymentsService {
   }
 
   private formatErrorResponse(error: any): PaymentResponse {
-    if (error instanceof BadRequestException || error instanceof NotFoundException || error instanceof InternalServerErrorException) {
+    if (
+      error instanceof BadRequestException ||
+      error instanceof NotFoundException ||
+      error instanceof InternalServerErrorException
+    ) {
       return {
         status: 'error',
         error: {
@@ -230,31 +299,3 @@ export class PaymentsService {
     };
   }
 }
-
-console.log(
-  JSON.stringify({
-    cvv: '408',
-    expiry: '0926',
-    charge_info_id: '39',
-    pan: '4084084084084081',
-    pin: '0000',
-    _csrf: 'uQ07nJCf-p_t1srcEh6yWEqihHW9L9ICqzBc',
-    token: '87mknv2646vm2sbm30gb8q',
-    ip_address: '127.0.0.1',
-    customized: 'true',
-    callback_url: 'http://127.0.0.1:4200/v2/3dsecure/verify/87mknv2646vm2sbm30gb8q',
-    device: {
-      httpBrowserLanguage: 'en-GB',
-      httpBrowserJavaEnabled: 'false',
-      httpBrowserJavaScriptEnabled: 'true',
-      httpBrowserColorDepth: '24',
-      httpBrowserScreenHeight: '1050',
-      httpBrowserScreenWidth: '1680',
-      httpBrowserTimeDifference: '-60',
-      userAgentBrowserValue: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
-    },
-    customer_name: 'Chioma Adeleke',
-    metadata: [{ name: 'mobile_number', value: '+2348012345678' }, { name: 'items', value: [Array] }, { name: 'referrer' }],
-    identifier: 'CH_2025101395828_45R1EV',
-  }),
-);

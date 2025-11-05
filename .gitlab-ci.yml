@@ -1,0 +1,99 @@
+before_script:
+  - docker info
+variables:
+  IMAGE_REPO: kongapay-stage
+  IMAGE_NAME: payments-service-v2
+  IMAGE_NAME_LATEST: $IMAGE_NAME:$CI_PIPELINE_ID
+
+  DOCKER_REGISTRY: "kongapay-registry.igbimo.com"
+  DOCKER_REGISTRY_USERNAME: "deploy-user"
+  DOCKER_REGISTRY_PASSWORD: $KPAY_HARBOR_PASSWORD
+
+  KPAY_STAGING_CLUSTER: $KUBECONFIG_CONTENT
+  STAGING_AZ_PROJECT: aks-konga-pay-staging
+  STAGING_RESOURCE_GROUP: rg-konga-pay-staging-k8s
+  STAGING_ACR_URL: kongapay-registry.igbimo.com
+  KPAY_STAGING_SUBSCRIPTION: $KPAY_STAGING_SUB
+
+  KPAY_SWR_USERNAME: $SWR_USERNAME
+  KPAY_SWR_PASSWORD: $SWR_PASSWORD
+  
+
+  PROD_SWR_URL: swr.af-south-1.myhuaweicloud.com
+stages:
+  - test
+  - build
+  - deploy
+test:
+  stage: test
+  tags:
+    - huawei_shell
+  script:
+    - echo "Running tests"
+build-staging:
+  stage: build
+  tags:
+    - staging-kpay
+  script:
+    - echo "$DOCKER_REGISTRY_PASSWORD" | docker login "$DOCKER_REGISTRY" -u "$DOCKER_REGISTRY_USERNAME" --password-stdin
+    - docker build -t $STAGING_ACR_URL/$IMAGE_REPO/$IMAGE_NAME_LATEST  -f Dockerfile.k8s .
+    - docker push $STAGING_ACR_URL/$IMAGE_REPO/$IMAGE_NAME_LATEST
+  only:
+    - staging
+build-production:
+  stage: build
+  tags:
+    - huawei_shell
+  script:
+    - docker login -u af-south-1@$KPAY_SWR_USERNAME -p $KPAY_SWR_PASSWORD $PROD_SWR_URL
+  #  - docker login $PROD_SWR_URL -u $KPAY_SWR_USERNAME -p $KPAY_SWR_PASSWORD
+    - docker build -t $PROD_SWR_URL/kongapay/$IMAGE_NAME_LATEST  -f Dockerfile.k8s .
+    - docker push $PROD_SWR_URL/kongapay/$IMAGE_NAME_LATEST
+  only:
+    - Huawei_kpay_prod
+build-uat:
+  stage: build
+  tags:
+    - huawei_shell
+  script:
+    - docker login -u af-south-1@$KPAY_SWR_USERNAME -p $KPAY_SWR_PASSWORD $PROD_SWR_URL
+    - docker build -t $PROD_SWR_URL/kongapay/$IMAGE_NAME-uat:$CI_PIPELINE_ID  -f Dockerfile.k8s .
+    - docker push $PROD_SWR_URL/kongapay/$IMAGE_NAME-uat:$CI_PIPELINE_ID
+  only:
+    - huawei-staging
+  when: manual
+
+deploy-staging:
+  stage: deploy
+  tags:
+    - staging-kpay
+  script:
+    - echo "$KPAY_STAGING_CLUSTER" > ~/.kube/config
+    - kubectl apply -f k8s/staging/
+    - kubectl set image deployment $IMAGE_NAME $IMAGE_NAME=$STAGING_ACR_URL/$IMAGE_REPO/$IMAGE_NAME_LATEST
+  only:
+    - staging
+    - huawei-staging
+deploy-production:
+  stage: deploy
+  tags:
+    - huawei_shell
+  script:
+    - echo "$Huawei_kpay_prod" > ~/.kube/config
+    - kubectl apply -f k8s/production/
+    - kubectl set image deployment $IMAGE_NAME $IMAGE_NAME=$PROD_SWR_URL/kongapay/$IMAGE_NAME_LATEST
+  only:
+    - Huawei_kpay_prod
+  when: manual
+
+deploy-uat:
+  stage: deploy
+  tags:
+    - huawei_shell
+  script:
+    - echo "$Huawei_kpay_prod" > ~/.kube/config
+    - kubectl apply -f k8s/skaleet/
+    - kubectl set image deployment/sk-payments-service-v2 sk-payments-service-v2=$PROD_SWR_URL/kongapay/$IMAGE_NAME-uat:$CI_PIPELINE_ID
+  only:
+    - huawei-staging
+  when: manual

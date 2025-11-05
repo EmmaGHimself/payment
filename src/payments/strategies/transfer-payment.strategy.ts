@@ -19,12 +19,14 @@ export class TransferPaymentStrategy implements IPaymentStrategy {
       customerName: string;
       provider?: string;
       merchant_name?: string;
+      pin: string;
     },
   ): Promise<any> {
     try {
       const providerName = PAYMENT_PROVIDERS.KNIP;
       const provider = this.paymentProviderFactory.getTransferProvider(providerName);
       const result = await provider.createCharge(request);
+      console.log(result);
       this.logger.log(`Transfer payment initiated: ${request.reference}`);
       return result;
     } catch (err) {

@@ -28,10 +28,6 @@ RUN yarn install --frozen-lockfile --production
 # Copy compiled code from builder
 COPY --from=builder /app/dist ./dist
 
-EXPOSE 3000
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
-
+EXPOSE 80
 # Use start:prod (no nest cli needed)
 CMD ["yarn", "start:prod"]

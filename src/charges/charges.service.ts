@@ -172,6 +172,43 @@ export class ChargesService {
     }
   }
 
+  async submitValidation(dto: any) {
+    const charge = await this.findPendingCharge(dto.identifier);
+    const provider = this.paymentProviderFactory.getProvider(
+      (charge.service as any) || PAYMENT_PROVIDERS.PAYSTACK,
+    );
+
+    try {
+      const result = await provider.submitValidation(dto.identifier, {
+        type: dto.type,
+        ...dto.data,
+      });
+
+      await this.logChargeHistory(charge.id, {
+        description: `${dto.type.toUpperCase()} validation attempted`,
+        responseMessage: result.message,
+        status: result.success ? CHARGE_STATUS.SUCCESSFUL : CHARGE_STATUS.FAILED,
+        activity: `${dto.type.toUpperCase()}_VALIDATION`,
+        response: result.data,
+      });
+
+      if (result.success || (result.action_required && result.action_required.includes('completed'))) {
+        await this.markChargeAsSuccessful(charge);
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error submitting ${dto.type} validation:`, error);
+      await this.logChargeHistory(charge.id, {
+        description: `${dto.type.toUpperCase()} validation failed`,
+        responseMessage: error.message,
+        status: CHARGE_STATUS.FAILED,
+        activity: `${dto.type.toUpperCase()}_VALIDATION`,
+      });
+      throw error;
+    }
+  }
+
   async cancelCharge(identifier: string) {
     const charge = await this.findCharge(identifier);
     await this.chargeRepository.update({ id: charge.id }, { status: CHARGE_STATUS.CANCELLED });
@@ -476,5 +513,85 @@ export class ChargesService {
 
   private async markChargeAsSuccessful(charge: ChargeEntity): Promise<void> {
     await this.queue.add('settle', { charge_id: charge.id, settle: true }, {});
+  }
+
+  async paystackValidation(validationDto: any) {
+    try {
+      // Get charge by identifier or charge_info_id
+      const chargeIdentifier = validationDto.identifier || validationDto.charge_info_id;
+
+      if (!chargeIdentifier) {
+        throw new PaymentException('Either identifier or charge_info_id must be provided');
+      }
+
+      const charge = await this.findCharge(chargeIdentifier);
+
+      // Get the Paystack provider
+      const paystackProvider = this.paymentProviderFactory.getProvider(PAYMENT_PROVIDERS.PAYSTACK);
+
+      // Call submitValidationWithCharge method from PaystackService
+      const result = await (paystackProvider as any).submitValidationWithCharge(charge.id, validationDto.validation, validationDto.token);
+
+      // Log charge history
+      await this.logChargeHistory(charge.id, {
+        description: 'Paystack validation submitted',
+        responseMessage: result.message || 'Validation processed',
+        status: result.action_required?.includes('completed') ? CHARGE_STATUS.SUCCESSFUL : CHARGE_STATUS.PENDING,
+        activity: 'PAYSTACK_VALIDATION',
+        response: result,
+      });
+
+      // Mark charge as successful if completed
+      if (result.action_required?.includes('completed')) {
+        await this.markChargeAsSuccessful(charge);
+      }
+
+      return {
+        status: 'success',
+        message: result.message,
+        action_required: result.action_required,
+        data: result.data,
+      };
+    } catch (error) {
+      this.logger.error('Error in Paystack validation:', error);
+      throw new PaymentException(error.message || 'Paystack validation failed');
+    }
+  }
+
+  async requeryPaystackCharge(requeryDto: any) {
+    try {
+      // Get charge by identifier or charge_info_id
+      const charge = await this.findCharge(requeryDto.identifier || requeryDto.charge_identifier);
+
+      // Get the Paystack provider
+      const paystackProvider = this.paymentProviderFactory.getProvider(PAYMENT_PROVIDERS.PAYSTACK);
+
+      // Call queryChargeStatus method from PaystackService
+      const result = await (paystackProvider as any).queryChargeStatus(charge.id);
+
+      // Log charge history
+      await this.logChargeHistory(charge.id, {
+        description: 'Paystack charge requery',
+        responseMessage: result.message || 'Charge status queried',
+        status: result.action_required?.includes('completed') ? CHARGE_STATUS.SUCCESSFUL : CHARGE_STATUS.PENDING,
+        activity: 'PAYSTACK_REQUERY',
+        response: result,
+      });
+
+      // Mark charge as successful if completed
+      if (result.action_required?.includes('completed')) {
+        await this.markChargeAsSuccessful(charge);
+      }
+
+      return {
+        status: 'success',
+        message: result.message,
+        action_required: result.action_required,
+        data: result.data,
+      };
+    } catch (error) {
+      this.logger.error('Error in Paystack requery:', error);
+      throw new PaymentException(error.message || 'Paystack requery failed');
+    }
   }
 }

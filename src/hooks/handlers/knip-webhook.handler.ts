@@ -45,6 +45,14 @@ export class KnipWebhookHandler {
         activity: 'KNIP_WEBHOOK',
         response: payload,
       });
+      if (charge.status === CHARGE_STATUS.COMPLETED && charge.successful === true) {
+        return { status: 'OK' };
+      }
+      await this.chargeMetadataRepository.save(
+        this.chargeMetadataRepository.create([
+          { name: 'knip_session_id', value: payload.session_id },
+        ]),
+      );
       await this.markChargeAsSuccessful(charge);
       return {
         event: payload.event,
@@ -55,11 +63,18 @@ export class KnipWebhookHandler {
   }
 
   private isSuccessfulEvent(payload: any): boolean {
-    return payload.event === 'charge.success' || (payload.event === 'charge.completed' && payload.data.status === 'success');
+    return (
+      payload.event === 'charge.success' ||
+      (payload.event === 'charge.completed' && payload.data.status === 'success')
+    );
   }
 
   private async markChargeAsSuccessful(charge: ChargeEntity): Promise<void> {
-    await this.settleCharge.add('settle', { charge_id: charge.id, settle: true });
+    await this.chargeRepository.update(
+      { id: charge.id },
+      { status: 'completed', successful: true },
+    );
+    // await this.settleCharge.add('settle', { charge_id: charge.id, settle: true });
   }
 
   private async logChargeHistory(

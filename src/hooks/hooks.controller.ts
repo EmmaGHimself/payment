@@ -52,7 +52,7 @@ export class HooksController {
     this.logger.log(`Received Knip webhook: ${payload.event}`);
 
     try {
-      const result = await this.hooksService.handleKnipWebhook(payload, req.rawBody);
+      const result = await this.hooksService.handleKnipWebhook(payload, req.rawBody)
 
       this.logger.log(`Knip webhook processed: ${payload.event}`);
       return result;

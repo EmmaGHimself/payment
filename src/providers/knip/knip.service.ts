@@ -4,13 +4,20 @@ import { HttpService } from '@nestjs/axios';
 import * as crypto from 'crypto';
 import { BasePaymentProvider } from '../base/base-payment-provider';
 import { CircuitBreakerService } from '../base/circuit-breaker.service';
-import { PaymentRequest, PaymentResponse } from '../../common/interfaces/payment-provider.interface';
+import {
+  PaymentRequest,
+  PaymentResponse,
+} from '../../common/interfaces/payment-provider.interface';
 import { PAYMENT_PROVIDERS } from '../../common/constants/payment.constants';
 import { MaskUtil } from '../../common/utils/mask.util';
 
 @Injectable()
 export class KnipService extends BasePaymentProvider {
-  constructor(httpService: HttpService, configService: ConfigService, circuitBreakerService: CircuitBreakerService) {
+  constructor(
+    httpService: HttpService,
+    configService: ConfigService,
+    circuitBreakerService: CircuitBreakerService,
+  ) {
     super(httpService, configService, circuitBreakerService, PAYMENT_PROVIDERS.KNIP);
   }
 
@@ -28,7 +35,6 @@ export class KnipService extends BasePaymentProvider {
         callback_url: `${this.configService.get<string>('payment.providers.knip.callback_url')}`,
         // settlement_account: this.configService.getOrThrow<string>('payment.providers.knip.settlement_account'),
       };
-      console.log('payload for KNIP VA ===> ', payload);
       const response = await this.makeRequest<{
         status: string;
         message: string;

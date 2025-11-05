@@ -1,9 +1,14 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
-import { AxiosRequestConfig, AxiosResponse } from 'axios';
-import { IPaymentProvider, PaymentProviderConfig, PaymentRequest, PaymentResponse } from '../../common/interfaces/payment-provider.interface';
+import { firstValueFrom, lastValueFrom } from 'rxjs';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
+import {
+  IPaymentProvider,
+  PaymentProviderConfig,
+  PaymentRequest,
+  PaymentResponse,
+} from '../../common/interfaces/payment-provider.interface';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { PaymentProvider } from '../../common/constants/payment.constants';
 
@@ -25,7 +30,10 @@ export abstract class BasePaymentProvider implements IPaymentProvider {
   abstract createCharge(request: PaymentRequest): Promise<PaymentResponse>;
   abstract verifyTransaction(reference: string): Promise<PaymentResponse>;
   abstract submitValidation(reference: string, data: Record<string, any>): Promise<PaymentResponse>;
-  abstract processWebhook(payload: Record<string, any>, signature: string): Promise<PaymentResponse>;
+  abstract processWebhook(
+    payload: Record<string, any>,
+    signature: string,
+  ): Promise<PaymentResponse>;
 
   protected async makeRequest<T = any>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
@@ -44,12 +52,14 @@ export abstract class BasePaymentProvider implements IPaymentProvider {
       },
       timeout: this.config.timeout,
     };
+    console.log(config)
 
     const circuitBreakerKey = `${this.getName()}_${method}_${url}`;
 
     return this.circuitBreakerService.execute(circuitBreakerKey, async () => {
       this.logger.debug(`Making ${method} request to ${config.url}`);
-      const data = await firstValueFrom(this.httpService.request(config));
+      const data = await lastValueFrom(this.httpService.request(config));
+      console.log('Data from paystack ===> ', JSON.stringify(data.data));
       return data.data;
     });
   }
@@ -57,7 +67,7 @@ export abstract class BasePaymentProvider implements IPaymentProvider {
   protected abstract getDefaultHeaders(): Record<string, string>;
 
   protected handleError(error: any): PaymentResponse {
-    this.logger.error(`Payment provider error:`, error.message);
+    this.logger.error(`Payment provider error:`, error.message, error.stack);
 
     if (error.response) {
       return {
@@ -68,7 +78,13 @@ export abstract class BasePaymentProvider implements IPaymentProvider {
       };
     }
 
-    throw new InternalServerErrorException('Payment provider error');
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      return {
+        success: false,
+        reference: '',
+        message: 'Payment request timed out. Please check transaction status or try again.',
+      };
+    }
 
     return {
       success: false,

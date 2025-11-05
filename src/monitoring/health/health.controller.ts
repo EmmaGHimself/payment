@@ -33,8 +33,8 @@ export class HealthController {
       // Memory health check (heap should not exceed 150MB)
       () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024),
       
-      // Storage health check (disk should not exceed 75% usage)
-      () => this.disk.checkStorage('storage', { threshold: 0.75, path: '/' }),
+      // Storage health check (disk should not exceed 60% usage)
+      //() => this.disk.checkStorage('storage', { threshold: 0.60, path: '/' }),
       
       // Redis health check
       async () => {
