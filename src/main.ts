@@ -7,7 +7,7 @@ apm.start({
   serviceName: process.env.APM_SERVICE_NAME || 'payment-service-v2',
   serverUrl: process.env.APM_SERVER_URL || 'https://apm.konga.com',
   environment: process.env.APM_SERVICE_ENVIRONMENT || process.env.NODE_ENV || 'production',
-  active: process.env.ELASTIC_APM_ACTIVE !== 'false',
+  active: false, //process.env.ELASTIC_APM_ACTIVE !== 'false',
   logLevel: 'info',
   captureBody: 'all',
   captureHeaders: true,
