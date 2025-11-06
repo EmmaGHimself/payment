@@ -28,6 +28,17 @@ interface MerchantInfo {
   logo_url: string | null;
 }
 
+interface PaymentResponse {
+  status: 'success' | 'error';
+  message?: string;
+  data?: any;
+  error?: {
+    message: string;
+    code?: number;
+    action_required?: string;
+  };
+}
+
 interface PaymentChannel {
   id: number;
   identifier: string;
@@ -192,7 +203,10 @@ export class ChargesService {
         response: result.data,
       });
 
-      if (result.success || (result.action_required && result.action_required.includes('completed'))) {
+      if (
+        result.success ||
+        (result.action_required && result.action_required.includes('completed'))
+      ) {
         await this.markChargeAsSuccessful(charge);
       }
 
@@ -515,7 +529,7 @@ export class ChargesService {
     await this.queue.add('settle', { charge_id: charge.id, settle: true }, {});
   }
 
-  async paystackValidation(validationDto: any) {
+  async paystackValidation(validationDto: any, res: any) {
     try {
       // Get charge by identifier or charge_info_id
       const chargeIdentifier = validationDto.identifier || validationDto.charge_info_id;
@@ -530,13 +544,19 @@ export class ChargesService {
       const paystackProvider = this.paymentProviderFactory.getProvider(PAYMENT_PROVIDERS.PAYSTACK);
 
       // Call submitValidationWithCharge method from PaystackService
-      const result = await (paystackProvider as any).submitValidationWithCharge(charge.id, validationDto.validation, validationDto.token);
+      const result = await (paystackProvider as any).submitValidationWithCharge(
+        charge.id,
+        validationDto.validation,
+        validationDto.token,
+      );
 
       // Log charge history
       await this.logChargeHistory(charge.id, {
         description: 'Paystack validation submitted',
         responseMessage: result.message || 'Validation processed',
-        status: result.action_required?.includes('completed') ? CHARGE_STATUS.SUCCESSFUL : CHARGE_STATUS.PENDING,
+        status: result.action_required?.includes('completed')
+          ? CHARGE_STATUS.SUCCESSFUL
+          : CHARGE_STATUS.PENDING,
         activity: 'PAYSTACK_VALIDATION',
         response: result,
       });
@@ -546,34 +566,32 @@ export class ChargesService {
         await this.markChargeAsSuccessful(charge);
       }
 
-      return {
+      return this.sendResponse(res, {
         status: 'success',
         message: result.message,
-        action_required: result.action_required,
-        data: result.data,
-      };
+        data: {
+          action_required: result.action_required,
+          ...result.data,
+        },
+      });
     } catch (error) {
       this.logger.error('Error in Paystack validation:', error);
       throw new PaymentException(error.message || 'Paystack validation failed');
     }
   }
 
-  async requeryPaystackCharge(requeryDto: any) {
+  async requeryPaystackCharge(requeryDto: any, res: any) {
     try {
-      // Get charge by identifier or charge_info_id
       const charge = await this.findCharge(requeryDto.identifier || requeryDto.charge_identifier);
-
-      // Get the Paystack provider
       const paystackProvider = this.paymentProviderFactory.getProvider(PAYMENT_PROVIDERS.PAYSTACK);
-
-      // Call queryChargeStatus method from PaystackService
       const result = await (paystackProvider as any).queryChargeStatus(charge.id);
 
-      // Log charge history
       await this.logChargeHistory(charge.id, {
         description: 'Paystack charge requery',
         responseMessage: result.message || 'Charge status queried',
-        status: result.action_required?.includes('completed') ? CHARGE_STATUS.SUCCESSFUL : CHARGE_STATUS.PENDING,
+        status: result.action_required?.includes('completed')
+          ? CHARGE_STATUS.SUCCESSFUL
+          : CHARGE_STATUS.PENDING,
         activity: 'PAYSTACK_REQUERY',
         response: result,
       });
@@ -582,16 +600,20 @@ export class ChargesService {
       if (result.action_required?.includes('completed')) {
         await this.markChargeAsSuccessful(charge);
       }
-
-      return {
+      return this.sendResponse(res, {
         status: 'success',
         message: result.message,
-        action_required: result.action_required,
-        data: result.data,
-      };
+        data: {
+          action_required: result.action_required,
+          ...result.data,
+        },
+      });
     } catch (error) {
       this.logger.error('Error in Paystack requery:', error);
       throw new PaymentException(error.message || 'Paystack requery failed');
     }
+  }
+  private sendResponse(res: Response, response: PaymentResponse): void {
+    res.status(response.status === 'success' ? 200 : 400).json(response);
   }
 }

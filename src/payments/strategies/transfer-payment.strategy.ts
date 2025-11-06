@@ -26,7 +26,6 @@ export class TransferPaymentStrategy implements IPaymentStrategy {
       const providerName = PAYMENT_PROVIDERS.KNIP;
       const provider = this.paymentProviderFactory.getTransferProvider(providerName);
       const result = await provider.createCharge(request);
-      console.log(result);
       this.logger.log(`Transfer payment initiated: ${request.reference}`);
       return result;
     } catch (err) {

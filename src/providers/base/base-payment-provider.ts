@@ -52,14 +52,12 @@ export abstract class BasePaymentProvider implements IPaymentProvider {
       },
       timeout: this.config.timeout,
     };
-    console.log(config)
 
     const circuitBreakerKey = `${this.getName()}_${method}_${url}`;
 
     return this.circuitBreakerService.execute(circuitBreakerKey, async () => {
       this.logger.debug(`Making ${method} request to ${config.url}`);
       const data = await lastValueFrom(this.httpService.request(config));
-      console.log('Data from paystack ===> ', JSON.stringify(data.data));
       return data.data;
     });
   }

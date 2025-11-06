@@ -11,4 +11,14 @@ export class PaystackRequeryDto {
   @IsOptional()
   @IsString()
   callback?: string;
+
+  @ApiProperty({ description: 'Charge Info Id' })
+  @IsNotEmpty()
+  @IsString()
+  charge_info_id: string;
+
+  @ApiPropertyOptional({ description: 'Token for redirect' })
+  @IsOptional()
+  @IsString()
+  token?: string;
 }

@@ -81,8 +81,9 @@ export class PaymentsService {
         data: result,
       });
     } catch (error) {
+      console.log(error);
       this.logger.error(`Card payment processing failed: ${dto.identifier}`, {
-        error: error.message,
+        error: error.message || error.error,
         stack: error.stack,
         response: error.response?.data,
       });
@@ -92,7 +93,8 @@ export class PaymentsService {
         error.response?.data?.data?.message ||
         error.response?.data?.message ||
         error.message ||
-        'Card payment processing failed';
+        error.error;
+      ('Card payment processing failed');
 
       return this.sendResponse(res, {
         status: 'error',
@@ -122,11 +124,6 @@ export class PaymentsService {
         merchant_name: chargeInfo.merchantName,
         pin: null,
       });
-      // console.log(result)
-
-      // if (result.status === 'success') {
-      //   await this.queueSettlement(charge.id);
-      // }
 
       this.sendResponse(res, { status: 'success', data: result });
     } catch (error) {

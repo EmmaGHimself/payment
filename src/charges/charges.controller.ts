@@ -107,8 +107,8 @@ export class ChargesController {
   @ApiOperation({ summary: 'Submit Paystack validation (OTP, phone, birthday, address)' })
   @ApiResponse({ status: 200, description: 'Validation submitted successfully' })
   @ApiResponse({ status: 400, description: 'Invalid validation data' })
-  async paystackValidation(@Body() validationDto: PaystackValidationDto) {
-    return this.chargesService.paystackValidation(validationDto);
+  async paystackValidation(@Body() validationDto: PaystackValidationDto, @Res() res: Response){
+    return this.chargesService.paystackValidation(validationDto, res);
   }
 
   @Post('paystack/requery')
@@ -118,7 +118,7 @@ export class ChargesController {
   @ApiOperation({ summary: 'Requery Paystack charge status' })
   @ApiResponse({ status: 200, description: 'Charge status retrieved successfully' })
   @ApiResponse({ status: 400, description: 'Invalid charge identifier' })
-  async requeryPaystackCharge(@Body() requeryDto: PaystackRequeryDto) {
-    return this.chargesService.requeryPaystackCharge(requeryDto);
+  async requeryPaystackCharge(@Body() requeryDto: PaystackRequeryDto, @Res() res: Response) {
+    return this.chargesService.requeryPaystackCharge(requeryDto, res);
   }
 }

@@ -36,9 +36,9 @@ export class PaystackService extends BasePaymentProvider {
     try {
       const payload = {
         email: request.email,
-        amount: request.amount * 100, // Paystack expects amount in kobo
+        amount: Number(request.amount * 100).toFixed(2), // Paystack expects amount in kobo
         reference: request.reference,
-        currency: 'NGN', // request.currency,
+        currency: request.currency, // request.currency,
         card: request.card,
         pin: request.pin,
         metadata: {
@@ -58,7 +58,6 @@ export class PaystackService extends BasePaymentProvider {
       };
 
       const response = await this.makeRequest('POST', '/charge', payload);
-
       const nextAction = this.getNextAction(response.data.status as string);
 
       if (nextAction.includes('completed')) {
@@ -85,7 +84,8 @@ export class PaystackService extends BasePaymentProvider {
           action_required: nextAction,
         };
       }
-      if (nextAction === 'terminate') throw new InternalServerErrorException(response);
+      if (nextAction === 'terminate')
+        throw new InternalServerErrorException(response.data.message || response.data.display_text);
       await Promise.all([
         this.chargeMetadataRepository.save(
           this.chargeMetadataRepository.create([
@@ -187,7 +187,11 @@ export class PaystackService extends BasePaymentProvider {
     }
   }
 
-  async submitValidationWithCharge(chargeId: number, validationData: Record<string, any>, token?: string): Promise<any> {
+  async submitValidationWithCharge(
+    chargeId: number,
+    validationData: Record<string, any>,
+    token?: string,
+  ): Promise<any> {
     try {
       // Get charge metadata to retrieve paystack reference and validation type
       const metadata = await this.chargeMetadataRepository.find({
