@@ -1,4 +1,15 @@
-import { Controller, Post, Get, Put, Body, Param, UseGuards, HttpStatus, HttpCode, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Put,
+  Body,
+  Param,
+  UseGuards,
+  HttpStatus,
+  HttpCode,
+  Res,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ChargesService } from './charges.service';
 import { InitiateChargeDto } from './dto/initiate-charge.dto';
@@ -18,7 +29,6 @@ export class ChargesController {
 
   @Post('initiate')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Initiate a new charge' })
   @ApiResponse({ status: 200, description: 'Charge initiated successfully' })
   @ApiResponse({ status: 400, description: 'Invalid request data' })
@@ -32,7 +42,10 @@ export class ChargesController {
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Initiate charge with view URL' })
   @ApiResponse({ status: 200, description: 'Charge view URL generated' })
-  async initiateChargeView(@Body() initiateChargeDto: InitiateChargeDto, @Res() res: Response): Promise<any> {
+  async initiateChargeView(
+    @Body() initiateChargeDto: InitiateChargeDto,
+    @Res() res: Response,
+  ): Promise<any> {
     return this.chargesService.initiateCharge({ ...initiateChargeDto, use_view: true }, res);
   }
 
@@ -96,7 +109,10 @@ export class ChargesController {
   @UseGuards(AuthGuard, MerchantGuard)
   @ApiOperation({ summary: 'Manually settle a charge' })
   @ApiResponse({ status: 200, description: 'Charge settled successfully' })
-  async settleCharge(@Param('charge_id') chargeId: string, @Body() settlementData: { reason: string; extra_data?: Record<string, any> }) {
+  async settleCharge(
+    @Param('charge_id') chargeId: string,
+    @Body() settlementData: { reason: string; extra_data?: Record<string, any> },
+  ) {
     return this.chargesService.settleCharge(parseInt(chargeId), settlementData);
   }
 
@@ -107,7 +123,7 @@ export class ChargesController {
   @ApiOperation({ summary: 'Submit Paystack validation (OTP, phone, birthday, address)' })
   @ApiResponse({ status: 200, description: 'Validation submitted successfully' })
   @ApiResponse({ status: 400, description: 'Invalid validation data' })
-  async paystackValidation(@Body() validationDto: PaystackValidationDto, @Res() res: Response){
+  async paystackValidation(@Body() validationDto: PaystackValidationDto, @Res() res: Response) {
     return this.chargesService.paystackValidation(validationDto, res);
   }
 
